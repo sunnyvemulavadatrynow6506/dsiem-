@@ -1,0 +1,13 @@
+# Griffendo runtime dependencies.
+#
+# The application is a single FastAPI process plus a SQLite file, so the runtime list is
+# deliberately short.  Versions are lower bounds: the code uses no API that changed
+# recently, and pinning exact versions would force upgrades for no benefit on an endpoint.
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2.5
+requests>=2.31
+openpyxl>=3.1          # reading the rule inventory spreadsheet (tools/, docs build)
+
+# Test suite only:
+#   pip install -r requirements-dev.txt

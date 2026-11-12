@@ -1,4 +1,17 @@
-# Griffendo — Windows Event Intelligence (v5.1)
+# Griffendo — Windows Event Intelligence (v6)
+
+> **v6: correlation engine rebuilt.** Detections are now continuous *episodes* per
+> correlation key (account + source for authentication, process-tree root for process
+> activity), with DSIEM-style occurrence/timeout semantics and bounded risk escalation for
+> repetition. See [`docs/CORRELATION_ENGINE.md`](docs/CORRELATION_ENGINE.md) for the design,
+> which DSIEM capabilities were adopted and which were excluded (with reasons), the
+> telemetry reality check, and the test inventory.
+>
+> ```bash
+> pip install -r requirements-dev.txt
+> python -m pytest tests        # 102 tests, synthetic events, no Windows required
+> ```
+
 
 - `docs/REPORT.md` — v5.1 report (§0: start-up hang and speed fixes): detection and correlation engine, rule inventory, Detections page, time filters; tests, measurements, limitations
 - `docs/REPORT_v4.md` — v4 report: rule switches + history, anomaly timeline, 24-hour graph, refresh
