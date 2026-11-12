@@ -292,6 +292,7 @@ async function showEvent(eventId) {
 
 async function loadProcesses() {
   const body = $("#processes-body");
+  loadLineage();
   try {
     const rows = await api("/api/processes?limit=250");
     if (!rows.length) {
@@ -453,6 +454,49 @@ function setView(view) {
   if (view === "detections") startDetectionTimer(); else stopDetectionTimer();
   window.scrollTo({ top: 0 });
   return VIEW_LOADERS[view]();
+}
+
+async function loadLineage() {
+  /* Exact process trees from Sysmon GUIDs, with Security 4688 parent links clearly marked as
+     probable (PID reuse). A lineage the telemetry cannot prove is never drawn. */
+  const root = $("#process-lineage");
+  if (!root) return;
+  try {
+    const data = await api("/api/process-lineage?limit=400");
+    const totals = $("#lineage-totals"), note = $("#lineage-note");
+    if (totals) totals.textContent = `${number(data.totals.processes)} PROCESSES · ${number(data.totals.exact_edges)} EXACT · ${number(data.totals.probable_edges)} PROBABLE`;
+    if (note) note.textContent = data.note;
+    if (!data.nodes.length) {
+      root.innerHTML = emptyState("No process-creation events in the window. Install Sysmon or enable Audit Process Creation (4688) for process lineage.");
+      return;
+    }
+    // Group children by their parent so a tree reads top-down.
+    const byParent = new Map();
+    const roots = [];
+    data.nodes.forEach((node) => {
+      const parentId = node.parent && node.parent.id;
+      if (!parentId || !data.nodes.some((n) => n.id === parentId)) { roots.push(node); return; }
+      if (!byParent.has(parentId)) byParent.set(parentId, []);
+      byParent.get(parentId).push(node);
+    });
+    const renderNode = (node, depth) => {
+      const children = byParent.get(node.id) || [];
+      const link = node.parent ? (node.parent.exact
+        ? `<span class="lineage-edge exact" title="Exact link from Sysmon process GUIDs">exact</span>`
+        : `<span class="lineage-edge probable" title="Parent matched by Security 4688 PID only; a reused PID can make this uncertain">probable</span>`) : "";
+      const suspicious = (node.command_line || "").length > 200;
+      return `<div class="lineage-node depth-${Math.min(depth, 4)}">
+        <div class="lineage-node-head"><span class="tree-name">${escapeHtml(node.name)}</span>${link}
+          <span class="tree-host">${escapeHtml(node.host || "")}</span>
+          <span class="tree-pid">${escapeHtml(node.source === "sysmon" ? "GUID" : "PID")}</span></div>
+        ${node.command_line ? `<div class="lineage-cmd mono-cell${suspicious ? " long" : ""}" title="${escapeHtml(node.command_line)}">${escapeHtml(node.command_line.slice(0, 160))}${node.command_line.length > 160 ? "…" : ""}</div>` : ""}
+        ${children.length ? `<div class="lineage-children">${children.map((child) => renderNode(child, depth + 1)).join("")}</div>` : ""}
+      </div>`;
+    };
+    root.innerHTML = roots.map((node) => `<div class="lineage-root">${renderNode(node, 0)}</div>`).join("");
+  } catch (error) {
+    root.innerHTML = emptyState(`Process lineage is unavailable: ${error.message}`);
+  }
 }
 
 const VIEW_LOADERS = { overview: () => loadOverview(), detections: () => loadDetections(), rules: () => loadRulesView(), events: () => loadEvents(), processes: () => loadProcesses(), timeline: () => loadTimeline("start"), endpoints: () => loadEndpoints() };

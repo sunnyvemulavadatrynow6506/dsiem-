@@ -165,3 +165,35 @@ def test_true_negative_no_detection_without_a_rule_match(client):
     ingest(client, [b.logon(b.at(i * 30), "dave", "0x99", logon_type="2", ip="-") for i in range(5)])
     items = [i for i in detected(client) if i["primary_rule_id"] == "SEC-4625"]
     assert items == [], "successful logons must never be reported as failed logons"
+
+
+# ------------------------------------------------------------------ process lineage
+def test_process_lineage_reports_exact_and_probable_links(client):
+    """Process trees must separate Sysmon GUID links (exact) from 4688 PID links (probable)."""
+    from conftest import ingest
+    b = Builder()
+    parent = b.process(b.at(0), "aaaa", 1000, r"C:\Program Files\Office\WINWORD.EXE", "WINWORD.EXE /n x.docm",
+                       "root", 4, r"C:\Windows\explorer.exe")
+    child = b.process(b.at(5), "bbbb", 2000, r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                      "powershell.exe -enc AAAA", "aaaa", 1000, r"C:\Program Files\Office\WINWORD.EXE")
+    ingest(client, [parent, child])
+    data = client.get("/api/process-lineage").json()
+    names = {node["name"].lower() for node in data["nodes"]}
+    assert "winword.exe" in names and "powershell.exe" in names
+    child_node = next(n for n in data["nodes"] if n["name"].lower() == "powershell.exe")
+    assert child_node["parent"]["name"].lower() == "winword.exe"
+    assert child_node["parent"]["exact"] is True, "a Sysmon GUID parent link is exact evidence"
+    assert data["totals"]["exact_edges"] >= 1
+    assert "reused PID" in data["note"], "the caveat for PID-only links must be stated to the analyst"
+
+
+def test_security_4688_parent_link_is_marked_probable_not_exact(client):
+    """4688 carries PIDs only, so its parent link must never be presented as certain."""
+    from conftest import ingest
+    b = Builder()
+    parent = b.security_process(b.at(0), 0x100, r"C:\Windows\System32\cmd.exe", "cmd.exe", 0x10, r"C:\x\p.exe")
+    ingest(client, [parent])
+    data = client.get("/api/process-lineage").json()
+    edges = [node["parent"] for node in data["nodes"] if node.get("parent")]
+    assert edges and all(edge["exact"] is False for edge in edges)
+    assert data["totals"]["probable_edges"] >= 1

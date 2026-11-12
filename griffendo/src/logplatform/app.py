@@ -338,6 +338,83 @@ def processes(limit: int = Query(default=100, ge=1, le=500)) -> list[dict[str, A
     return [dict(row) for row in rows]
 
 
+@app.get("/api/process-lineage")
+def process_lineage(limit: int = Query(default=400, ge=1, le=2000),
+                    since_hours: int = Query(default=168, ge=1, le=720)) -> dict[str, Any]:
+    """Real process parent-child lineage from the process-creation events we actually store.
+
+    Griffendo records two sources of process creation, and they carry different evidence:
+
+      * Sysmon Event ID 1  -> ProcessGuid + ParentProcessGuid: an exact parent identity, which
+        is what makes a tree trustworthy.  Collected only when Sysmon is installed.
+      * Security 4688      -> NewProcessId + ProcessId: PIDs only, and a PID can be reused, so a
+        PID-based link is a *probable* relationship, never an exact one.
+
+    The response therefore separates `exact` (Sysmon GUID) from `probable` (4688 PID) edges and
+    states which source each edge came from.  Anything the telemetry cannot prove is left out
+    rather than guessed — the UI must not draw a lineage the logs do not support.
+    """
+    import json
+    from datetime import datetime, timedelta, timezone
+
+    since = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+    with db.read() as connection:
+        rows = connection.execute(
+            """SELECT hostname, event_time, normalized_json FROM events
+               WHERE event_time >= ?
+                 AND ((channel = 'Security' AND event_id = 4688)
+                      OR (channel = 'Microsoft-Windows-Sysmon/Operational' AND event_id = 1))
+               ORDER BY event_time ASC""", (since,)).fetchall()
+    for row in rows:
+        try:
+            fields = (json.loads(row["normalized_json"]) or {}).get("fields") or {}
+        except (TypeError, ValueError):
+            continue
+        sysmon = "ProcessGuid" in fields
+        child_name = _basename(fields.get("Image") or fields.get("NewProcessName"))
+        parent_name = _basename(fields.get("ParentImage"))
+        if not child_name:
+            continue
+        child_id = fields.get("ProcessGuid") or f"pid:{fields.get('NewProcessId') or fields.get('ProcessId')}"
+        parent_id = fields.get("ParentProcessGuid") or (
+            f"pid:{fields.get('ProcessId')}" if fields.get("ProcessId") else None)
+        child = nodes.setdefault(child_id, {"id": child_id, "name": child_name,
+                                            "path": fields.get("Image") or fields.get("NewProcessName"),
+                                            "command_line": fields.get("CommandLine"),
+                                            "user": fields.get("User") or fields.get("SubjectUserName"),
+                                            "host": row["hostname"], "first_seen": row["event_time"],
+                                            "source": "sysmon" if sysmon else "security-4688",
+                                            "executions": 0, "parent": None})
+        child["executions"] += 1
+        child["last_seen"] = row["event_time"]
+        if parent_name or parent_id:
+            if not child["parent"]:
+                child["parent"] = {"id": parent_id, "name": parent_name or "unknown",
+                                   "exact": bool(fields.get("ParentProcessGuid")),
+                                   "source": "sysmon" if sysmon else "security-4688"}
+            edges.append({"child": child_id, "parent": parent_id, "parent_name": parent_name,
+                          "exact": bool(fields.get("ParentProcessGuid")),
+                          "source": "sysmon" if sysmon else "security-4688", "at": row["event_time"]})
+    interesting = sorted(nodes.values(),
+                         key=lambda n: (0 if n.get("parent") else 1, -n["executions"], n["name"]))[:limit]
+    keep = {node["id"] for node in interesting}
+    return {"nodes": interesting,
+            "edges": [edge for edge in edges if edge["child"] in keep],
+            "totals": {"processes": len(nodes), "exact_edges": sum(1 for e in edges if e["exact"]),
+                       "probable_edges": sum(1 for e in edges if not e["exact"]),
+                       "sources": sorted({node["source"] for node in nodes.values()})},
+            "note": ("Exact parent links come from Sysmon process GUIDs. Security 4688 links parent by "
+                     "PID only, so a reused PID can make them probable rather than certain.")}
+
+
+def _basename(path: str | None) -> str | None:
+    if not path:
+        return None
+    return path.replace("/", "\\").rstrip("\\").split("\\")[-1] or None
+
+
 @app.get("/api/timeline")
 def timeline(limit: int = Query(default=100, ge=1, le=500)) -> list[dict[str, Any]]:
     with db.read() as connection:

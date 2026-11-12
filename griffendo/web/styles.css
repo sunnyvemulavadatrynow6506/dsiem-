@@ -753,3 +753,17 @@ body.is-loading::before { opacity: 1; width: 100%; animation: griffendo-progress
 }
 .score-decomposition span { display: inline-flex; gap: 6px; }
 .score-decomposition b { font-variant-numeric: tabular-nums; color: var(--text-strong, #e8eef7); }
+
+/* ------------------------------------------------------------------ process lineage
+   Exact (Sysmon GUID) links are drawn plainly; PID-only links are marked "probable" so an
+   analyst never mistakes a guess for evidence. */
+.lineage-tree { display: grid; gap: 14px; margin-top: 12px; }
+.lineage-node { padding: 8px 12px; border-left: 2px solid var(--line, #2a3444); }
+.lineage-node.depth-0 { border-left-color: var(--accent, #4c9aff); }
+.lineage-node-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lineage-children { margin: 6px 0 0 16px; display: grid; gap: 6px; }
+.lineage-cmd { font-size: 11px; color: var(--text-dim, #7c8798); margin-top: 3px; word-break: break-all; }
+.lineage-cmd.long { color: #e8913a; }
+.lineage-edge { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; }
+.lineage-edge.exact { color: #4bbf87; border: 1px solid rgba(75, 191, 135, .4); }
+.lineage-edge.probable { color: #e8913a; border: 1px solid rgba(232, 145, 58, .4); }

@@ -165,6 +165,7 @@
       </section>
 
       <section id="view-processes" class="view-panel" aria-label="Process explorer">
+        <section class="surface lineage-surface"><div class="section-heading"><div><span class="section-kicker">EXACT LINEAGE</span><h2>Process trees</h2></div><span class="chart-unit" id="lineage-totals"></span></div><p class="rules-note" id="lineage-note"></p><div id="process-lineage" class="lineage-tree"></div></section>
         <div class="process-layout"><section class="surface process-table-surface"><div class="section-heading"><div><span class="section-kicker">EXECUTION INVENTORY</span><h2>Observed processes</h2></div><span class="chart-unit">GROUPED BY HOST + PID</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>PROCESS (CHILD)</th><th>PID</th><th>PARENT PROCESS</th><th>PARENT PID</th><th>HOST</th><th>EVENTS</th><th>FIRST SEEN</th></tr></thead><tbody id="processes-body"></tbody></table></div></section><aside class="surface process-note"><span class="section-kicker">RELATIONSHIPS</span><h2>Parent to child</h2><p>Links are inferred from normalized process-creation fields. PID reuse and missing audit fields can make ancestry incomplete.</p><div id="process-tree" class="process-tree"></div></aside></div>
       </section>
 
