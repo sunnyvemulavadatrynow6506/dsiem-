@@ -19,6 +19,8 @@ from ... import db
 from ...settings import iso, parse_time, utc_now
 from . import risk
 
+from .registry import _correlation_summary  # noqa: E402  (avoid import cycle at module load)
+
 _CACHE: dict[str, tuple[float, Any]] = {}
 _LOCK = threading.Lock()
 TTL = 120.0      # results are keyed on the detection data version, so this only bounds clock drift of 'last 7 days'
@@ -325,6 +327,10 @@ def get_detection(detection_id: str) -> dict[str, Any] | None:
                              "available": item.get("event_key") in stored})
         if rule and rule.id not in rules:
             public = rule.public()
+            # `correlation` is computed by Rule.public() but was missing from this whitelist, so the
+            # detection detail view showed no correlation block (including the DSIEM stages) even
+            # though the episode itself was staged. Keep it, and fall back to the rule spec.
+            public["correlation"] = public.get("correlation") or _correlation_summary(rule.spec)
             rules[rule.id] = {key: public[key] for key in ("rule_id", "name", "kind", "origin", "origin_label",
                                                            "severity", "score", "confidence", "category", "description",
                                                            "enabled", "rev", "sources", "mitre", "support", "source",

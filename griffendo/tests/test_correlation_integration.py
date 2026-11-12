@@ -233,3 +233,21 @@ def test_staged_rule_escalates_through_its_stages_end_to_end(client):
     assert detail["stage"] == 3
     # The episode is still one row: staging escalates, it does not split the incident.
     assert len([i for i in items if i["scope"] == "account admin from 203.0.113.9"]) == 1
+
+
+def test_detection_detail_exposes_each_rules_correlation_block(client):
+    """The detail view must show why a detection correlated, including its DSIEM stages.
+
+    Regression: the per-rule payload in a detection used a field whitelist that omitted
+    ``correlation``, so a staged episode showed stage data but no sign of the stage
+    definition next to the contributing rule.
+    """
+    from conftest import ingest
+    b = Builder()
+    ingest(client, brute_force(b, 12))
+    episode = detected(client, rule_id="SEC-4625")[0]
+    detail = client.get(f"/api/detections/{episode['id']}").json()
+    block = detail["rules"]["SEC-4625"]["correlation"]
+    assert block["type"] == "staged"
+    assert [stage["reliability"] for stage in block["stages"]] == [1, 6, 9]
+    assert block["stages"][1]["occurrence"] == 10
