@@ -33,6 +33,7 @@ import math
 from typing import Any
 
 from . import config
+from . import stages as stage_model
 
 
 def base_blocks(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -55,19 +56,75 @@ def escalate(rule_score: float, occurrences: int, *, enabled: bool = True,
             "per_decade": settings.escalation_per_decade, "applied": round(bonus, 2) > 0}
 
 
+def staged(signals: list[dict[str, Any]], occurrences: dict[str, int],
+           stages_by_rule: dict[str, list] | None = None,
+           elapsed_by_rule: dict[str, float] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Apply DSIEM directive stages to a signal set.
+
+    A rule with ``correlation.stages`` scores each occurrence series by the reliability of the
+    stage the series has reached, so the stage result has to be in place *before* the noisy-OR
+    runs — otherwise the flat rule score would dominate the stage and escalating would be
+    cosmetic.  The returned signal list is a shallow copy per staged rule; the original
+    ``score`` of each staged rule is kept in ``base_rule_score`` for the explanation.
+    """
+    stages_by_rule = stages_by_rule or {}
+    elapsed_by_rule = elapsed_by_rule or {}
+    results: dict[str, dict[str, Any]] = {}
+    for signal in signals:
+        rule_id = signal["rule_id"]
+        definition = stages_by_rule.get(rule_id) or []
+        if not definition:
+            continue
+        result = stage_model.evaluate(definition, occurrences.get(rule_id, 1), elapsed_by_rule.get(rule_id, 0.0))
+        if result.get("staged"):
+            results[rule_id] = result
+    if not results:
+        return signals, {}
+    updated: list[dict[str, Any]] = []
+    for signal in signals:
+        result = results.get(signal["rule_id"])
+        if not result:
+            updated.append(signal)
+            continue
+        target = max(1.0, min(100.0, float(result["score"])))
+        if target <= float(signal.get("score") or 0):
+            updated.append(signal)
+            continue
+        copy = dict(signal)
+        copy["base_rule_score"] = signal.get("score")
+        copy["score"] = target
+        copy["stage"] = result["stage"]
+        updated.append(copy)
+    return updated, results
+
+
 def combine(signals: list[dict[str, Any]], occurrences: dict[str, int] | None = None,
             escalate_rules: set[str] | None = None,
-            cfg: config.CorrelationConfig | None = None) -> dict[str, Any]:
+            cfg: config.CorrelationConfig | None = None,
+            stages_by_rule: dict[str, list] | None = None,
+            elapsed_by_rule: dict[str, float] | None = None) -> dict[str, Any]:
     """Score an episode: the v5 noisy-OR over distinct rules, plus bounded escalation.
 
     ``occurrences`` maps rule id -> number of times that rule matched in the episode;
-    ``escalate_rules`` lists the rules allowed to escalate (from their rule definition).
+    ``escalate_rules`` lists the rules allowed to escalate (from their rule definition);
+    ``stages_by_rule`` / ``elapsed_by_rule`` carry the DSIEM stage definitions and how long
+    each rule's series has been running, so a staged rule is scored by the stage it reached.
     """
     from ..engine import risk
     settings = cfg or config.current()
-    combined = risk.combine(signals)
     occurrences = occurrences or {}
     escalate_rules = escalate_rules or set()
+    staged_signals, staged_results = staged(signals, occurrences, stages_by_rule, elapsed_by_rule)
+    combined = risk.combine(staged_signals)
+    # Expose the pre-stage score of each staged contributor, so the UI can show both.
+    for contributor in combined["contributors"]:
+        result = staged_results.get(contributor["rule_id"])
+        if result:
+            contributor["stage"] = result["stage"]
+            contributor["stage_score"] = result["score"]
+            contributor["base_rule_score"] = min(
+                (float(s.get("score") or 0) for s in signals if s["rule_id"] == contributor["rule_id"]),
+                default=contributor["score"])
     escalation = []
     total_bonus = 0.0
     for contributor in combined["contributors"]:
@@ -81,14 +138,13 @@ def combine(signals: list[dict[str, Any]], occurrences: dict[str, int] | None = 
     base = combined["score"]
     total_bonus = min(total_bonus, settings.occurrence_escalation_max)
     score = round(min(100.0, base + total_bonus), 1)
-    if total_bonus:
-        # Escalation may move the severity band; recompute it from the escalated score.
-        combined["severity"] = risk.severity_for(score)
+    combined["severity"] = risk.severity_for(score)
     combined["score"] = score
     combined["base_score"] = base
     combined["escalation"] = {"applied": round(total_bonus, 2), "cap": settings.occurrence_escalation_max,
                               "parts": escalation}
     combined["occurrences"] = {c["rule_id"]: occurrences.get(c["rule_id"], 1) for c in combined["contributors"]}
+    combined["stages"] = staged_results
     return combined
 
 
@@ -98,6 +154,8 @@ def explain(combined: dict[str, Any], rules: dict[str, Any]) -> str:
     text = risk.explain({}, {**combined, "score": combined.get("base_score", combined["score"]),
                              "contributors": combined["contributors"],
                              "corroborating": combined.get("corroborating", [])}, rules)
+    for rule_id, result in (combined.get("stages") or {}).items():
+        text += " " + stage_model.explain(result)
     escalation = combined.get("escalation") or {}
     if escalation.get("applied"):
         parts = "; ".join(f"{item['rule_id']} x{item['occurrences']} (+{item['bonus']:.1f})"

@@ -76,7 +76,28 @@ The important consequences are that **one correlation context produces one alarm
 many events filled it**, and that **repetition is a first-class part of the rule** (via
 `occurrence`), not an afterthought.
 
-### 3.2 Also transferred: de-duplication by identity
+### 3.2 Transferred too: directive stages
+
+A DSIEM directive is an ordered list of rules, each with a `stage`, an `occurrence`, a
+`timeout` and a **`reliability`** (`internal/pkg/dsiem/siem/directive.go`). As a backlog
+fills, `increaseStage()` walks the rule list upward: the same alarm is re-scored with a
+higher reliability instead of a second alarm being created. The alarm's risk is
+
+```
+risk = priority * reliability * assetValue / 25      # alarm.calcRisk, clamped 0-10
+```
+
+classified Low / Medium / High by the directive's `medium_lower` / `medium_upper` bounds.
+
+This is now replicated in `correlation/stages.py` (see §4.6), because it is the one part of
+DSIEM's model that expresses *escalation over time* and the v6 engine's flat occurrence
+escalation could not: a lone failure and a 10 000-attempt brute force reached the same
+stage-less score. Stage reliability maps onto Griffendo's 0-100 scale as
+`score = reliability * 10` (derived from the formula above with priority 10, asset 5, then
+rescaled ×5), and the reached stage's score replaces the rule's flat score before the
+noisy-OR runs, so staging changes the number the analyst sees and not just the text.
+
+### 3.3 Also transferred: de-duplication by identity
 
 DSIEM identifies a backlog by its entity, and an alarm by the backlog id
 (`findOrCreateAlarm(id)`), so re-processing the same activity updates an alarm instead of
@@ -84,7 +105,7 @@ creating a second one. The v6 engine does the same with a **deterministic episod
 derived from the correlation key and the time bucket, which is what makes replay and
 re-evaluation idempotent.
 
-### 3.3 Read, understood, and deliberately **not** transferred
+### 3.4 Read, understood, and deliberately **not** transferred
 
 These are all real DSIEM capabilities. Each was evaluated against Griffendo's architecture
 and rejected for a stated reason — not because it was hard, but because it either needs
@@ -113,6 +134,7 @@ raw event  ->  normalise  ->  rule match (v5 matchers, unchanged)
                             ->  classify      identity + occurrence policy   correlation/identity.py
                             ->  occurrence    has this rule fired yet?       correlation/state.py
                             ->  place         which open episode?            correlation/engine.py
+                            ->  stages        DSIEM directive stages         correlation/stages.py
                             ->  score         noisy-OR + escalation          correlation/risk.py
                             ->  aggregate     episode row + counters         correlation/aggregator.py
                             ->  store / API / UI                             engine/store.py, queries.py
@@ -228,10 +250,47 @@ to add a rule:
 ```
 
 Absent, the defaults apply (`occurrence: 1`, `timeout: GRIFFENDO_CORRELATION_TIMEOUT_SECONDS`,
-no escalation), so all 345 existing rules keep their current behaviour.
+no escalation, no stages), so rules that do not opt in keep their exact previous behaviour.
 
-`SEC-4625` (failed logon) is the first rule to opt in, because repetition is precisely
-what distinguishes brute force from a typo.
+**Stages** (DSIEM directives) are a second, optional block. They say how an indicator's
+reliability grows as the series accumulates:
+
+```python
+'correlation': {
+    'stages': [
+        {'occurrence': 1,   'timeout_seconds': 300,  'reliability': 1},   # stage 1: one match
+        {'occurrence': 10,  'timeout_seconds': 3600, 'reliability': 6},   # stage 2: ten matches
+        {'occurrence': 100, 'timeout_seconds': 7200, 'reliability': 9},   # stage 3: a hundred
+    ],
+}
+```
+
+The block is validated when the rule loads (`registry.validate_spec`), not at scoring time,
+so a bad stage is reported against the rule file with an actionable message: 1-10 stages,
+non-decreasing `occurrence`, stage 1 must have `occurrence: 1` (otherwise the rule could
+never alert), `reliability` 1-10, `timeout_seconds` 1 s - 7 days.
+
+Semantics, and the one deliberate deviation:
+
+- `occurrence` is **cumulative** (total matches in the series), whereas DSIEM counts
+  occurrences per stage. The port is equivalent because a backlog keeps all of its events,
+  so DSIEM's per-stage counts also accumulate — but cumulative counts are what an analyst
+  can check against the occurrence counter in the UI. This is the only deviation.
+- the reached stage's score is `reliability * 10`, and it *replaces* the rule's flat score
+  before correlation (`risk.staged`), so a stage-3 burst really scores higher. The pre-stage
+  score is kept in `contributors[].base_rule_score` and the stage fields (`stage`,
+  `stages`, `reached_at`, `reliability`, `score`, `expired`, `next_occurrence`) are stored on
+  the episode and exposed by the API.
+- a stage that waits past its `timeout_seconds` without reaching the next stage is marked
+  `expired`: the evidence is kept and the explanation says so. The series itself restarts
+  under the ordinary `timeout_seconds` rule (§4.3).
+- the ``escalate`` bonus still applies on top of the stage score, but it is additive and
+  bounded (12), so it can refine a stage's rating rather than override it.
+
+`SEC-4625` (failed logon) is the first rule to opt in, to **both** mechanisms, because
+repetition is precisely what distinguishes brute force from a typo: occurrence escalation
+raises the score smoothly, and stages 1/2/3 (reliability 1/6/9 at 1/10/100 matches) give the
+analyst DSIEM's reliability view of the same episode.
 
 ### 4.7 Determinism, replay and re-evaluation
 
@@ -272,7 +331,7 @@ emitted. On the synthetic corpus the attack chain renders as one tree:
 
 New columns on `det_signals` (`correlation_key`, `occurrences`, `episode_bucket`,
 `expires_at`) and `det_detections` (`correlation_key`, `episode_bucket`, `base_score`,
-`escalation_json`, `occurrence_count`, `source_mix`, `assigned_to`).
+`escalation_json`, `occurrence_count`, `source_mix`, `assigned_to`, `stage_json`).
 
 `store.migrate()` adds missing columns with `ALTER TABLE` on start-up — idempotent, no data
 loss, no table rewrite. `store.backfill_v6()` fills the new columns for pre-v6 rows from
@@ -309,11 +368,11 @@ requires_optional_source`) and the UI shows support status per rule, so an opera
 
 | Suite | What it protects |
 |---|---|
-| `tests/test_correlation_engine.py` (19) | bucket purity, identity separation (system accounts, auth account+source, process tree), occurrence requirement, occurrence after the requirement, timeout series reset, parallel vs escalating counts, bounded state, escalation curve and cap, opt-in escalation, corroboration, same-event double-counting |
-| `tests/test_correlation_integration.py` (12) | end-to-end through the real receiver: 40 logons → **1** detection with 40 occurrences; distinct incidents not merged; isolated events days apart stay separate; escalation raises score and the explanation says why; dashboard counts equal stored records; evidence links to events; analyst status survives new evidence; threshold does not go silent; true negative produces no detection; exact vs probable lineage |
+| `tests/test_correlation_engine.py` (23) | bucket purity, identity separation (system accounts, auth account+source, process tree), occurrence requirement, occurrence after the requirement, timeout series reset, parallel vs escalating counts, bounded state, escalation curve and cap, opt-in escalation, corroboration, same-event double-counting, **stage validation, stage escalation, stage expiry, stage score replacing the rule score** |
+| `tests/test_correlation_integration.py` (13) | end-to-end through the real receiver: 40 logons → **1** detection with 40 occurrences; distinct incidents not merged; isolated events days apart stay separate; escalation raises score and the explanation says why; dashboard counts equal stored records; evidence links to events; analyst status survives new evidence; threshold does not go silent; true negative produces no detection; exact vs probable lineage; **a staged rule walking stage 1 → 3 on one episode** |
 | existing suites (71) | v5 behaviour preserved: matchers, conditions, normalizer, Wazuh tree, chain correlator, behaviour model, API, collection, startup |
 
-**Total: 102 passing.** The suites are run with `python -m pytest tests`.
+**Total: 107 passing.** The suites are run with `python -m pytest tests`.
 
 ---
 
@@ -337,9 +396,9 @@ requires_optional_source`) and the UI shows support status per rule, so an opera
 1. **The occurrence state is in memory.** It is rebuilt by replay after a restart, which
    is correct but costs a replay of the correlation window. Persisting it is a future
    optimisation, not a correctness fix.
-2. **Escalation is opt-in per rule, and today only `SEC-4625` opts in.** That is
-   deliberate: escalation should be a considered decision per indicator, not a global
-   multiplier. Extending it to other volume-shaped rules (4776, 4625 variants, error
+2. **Escalation and stages are opt-in per rule, and today only `SEC-4625` opts in to
+   both.** That is deliberate: escalation should be a considered decision per indicator,
+   not a global multiplier. Extending it to other volume-shaped rules (4776, 4625 variants, error
    bursts) is a follow-up that needs a false-positive pass on real data.
 3. **Correlation is per host.** A lateral-movement chain that spans two machines cannot be
    correlated, because Griffendo has no cross-endpoint store. Adding one would be a
@@ -367,11 +426,12 @@ src/logplatform/detection/correlation/config.py       all tunables, env-driven
 src/logplatform/detection/correlation/identity.py     entity / correlation keys
 src/logplatform/detection/correlation/buckets.py      pure time buckets
 src/logplatform/detection/correlation/state.py        occurrence + timeout state machine
-src/logplatform/detection/correlation/risk.py         noisy-OR + bounded escalation
+src/logplatform/detection/correlation/risk.py         noisy-OR + bounded escalation + staging
+src/logplatform/detection/correlation/stages.py       DSIEM directive stages (validate/evaluate/explain)
 src/logplatform/detection/correlation/engine.py       classify/observe/place/build
 src/logplatform/detection/correlation/aggregator.py   EpisodeAggregator (persist/recompute)
-tests/test_correlation_engine.py                      19 unit tests
-tests/test_correlation_integration.py                 12 end-to-end tests
+tests/test_correlation_engine.py                      23 unit tests
+tests/test_correlation_integration.py                 13 end-to-end tests
 docs/CORRELATION_ENGINE.md                            this document
 ```
 
@@ -379,12 +439,13 @@ docs/CORRELATION_ENGINE.md                            this document
 
 ```
 src/logplatform/detection/engine/service.py    correlator wiring, correlate bridge, re-eval fix
-src/logplatform/detection/engine/store.py      v6 columns, migrate(), backfill_v6()
+src/logplatform/detection/engine/store.py      v6 columns (incl. stage_json), migrate(), backfill_v6()
+src/logplatform/detection/engine/registry.py   stage validation at load + stage summary in the API
 src/logplatform/detection/engine/queries.py    v6 fields, scope label, new sorts
 src/logplatform/app.py                         /api/process-lineage
 src/logplatform/detection_api.py               sort enum
 src/logplatform/detection/rules/windows/security/rule_SEC_4625.py   correlation block
-web/detections.js                              occurrence/escalation display
+web/detections.js                              occurrence/escalation/stage display
 web/app.js                                     lineage renderer
 web/index.html                                 lineage surface
 web/styles.css                                 lineage + escalation styles
@@ -402,7 +463,7 @@ src/logplatform/detection/engine/aggregator.py   v5 fixed-bucket Aggregator
 
 ```bash
 cd griffendo
-python -m pytest tests                 # 102 tests, synthetic events, no Windows needed
+python -m pytest tests                 # 107 tests, synthetic events, no Windows needed
 python tools/demo_server.py 8765       # dashboard + collector against a synthetic live log
 python src/launcher.py                 # the real agent on Windows (see griffendo/README.md)
 ```

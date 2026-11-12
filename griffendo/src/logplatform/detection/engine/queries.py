@@ -30,7 +30,7 @@ DETECTION_COLUMNS = ("id, entity_key, hostname, det_time, last_time, title, prim
                      "channels, category, mitre, score, severity, severity_rank, confidence, active, decision, "
                      "signal_count, event_count, user_name, process_name, summary, explanation, sources, status, "
                      "verdict, status_updated_at, suppression_id, created_at, updated_at, correlation_key, "
-                     "episode_bucket, base_score, escalation_json, occurrence_count, source_mix")
+                     "episode_bucket, base_score, escalation_json, occurrence_count, source_mix, stage_json")
 
 
 def invalidate() -> None:
@@ -99,6 +99,10 @@ def _row(row, registry) -> dict[str, Any]:
     item["escalated"] = bool(item["escalation"].get("applied"))
     item["occurrence_count"] = int(item.get("occurrence_count") or 0)
     item["source_mix"] = json.loads(item.pop("source_mix", None) or "[]")
+    stages = json.loads(item.pop("stage_json", None) or "{}")
+    item["stages"] = stages if isinstance(stages, dict) else {}
+    item["stage"] = max((int(v.get("stage") or 0) for v in item["stages"].values()), default=0)
+    item["staged"] = bool(item["stage"])
     item["scope"] = _scope_label(item.get("correlation_key"))
     return item
 

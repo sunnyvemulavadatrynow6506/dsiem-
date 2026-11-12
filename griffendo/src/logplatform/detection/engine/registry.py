@@ -102,7 +102,15 @@ class Rule:
 
 
 def _correlation_summary(spec: dict[str, Any]) -> dict[str, Any] | None:
+    block = spec.get("correlation") or {}
+    staged = None
+    if isinstance(block, dict) and block.get("stages"):
+        from ..correlation import stages as stage_model
+        staged = {"type": "staged", "stages": [s.public() for s in stage_model.parse(block)],
+                  "occurrence": block.get("occurrence"), "timeout_seconds": block.get("timeout_seconds")}
     kind = spec["kind"]
+    if staged:
+        return staged
     if kind == "sequence":
         return {"type": "sequence", "steps": len(spec["steps"]), "maxspan_seconds": spec.get("maxspan"),
                 "join_fields": sorted({f for step in spec["steps"] for f in (step.get("by") or [])})}
@@ -152,6 +160,15 @@ def validate_spec(spec: dict[str, Any], field_ok: Callable[[str], str | None] | 
             problems += conditions.validate(step.get("condition"), field_ok)
     if kind == "wazuh":
         problems += conditions.validate((spec.get("wazuh") or {}).get("condition"), field_ok)
+    # DSIEM directive stages (correlation/stages.py): validated at load time so a bad block is
+    # reported against the rule file instead of breaking an episode at scoring time.
+    block = spec.get("correlation") or {}
+    if isinstance(block, dict) and block.get("stages"):
+        from ..correlation import stages as stage_model
+        try:
+            stage_model.parse(block)
+        except ValueError as error:
+            problems.append(f"correlation: {error}")
     return problems
 
 

@@ -29,6 +29,7 @@ from ...settings import iso, utc_now
 from ..engine import normalizer, risk as engine_risk
 from ..engine.state import epoch
 from . import config, identity, risk
+from . import stages as stage_model
 
 # Analyst-owned columns: never written by persist()/recompute().
 ANALYST_FIELDS = ("status", "verdict", "status_updated_at", "suppression_id", "assigned_to")
@@ -207,7 +208,30 @@ class EpisodeAggregator:
                 series_seen[slot] = (max(count, previous[0]), max(total, previous[1]))
         occurrences = {rule: max(1, value) for rule, value in occurrences.items()}
         totals = {rule: max(1, value) for rule, value in totals.items()}
-        combined = risk.combine(basis, occurrences, escalate_rules)
+        # DSIEM stages: read each contributing rule's stage block and how long its series has run.
+        stages_by_rule: dict[str, list] = {}
+        elapsed_by_rule: dict[str, float] = {}
+        for signal in basis:
+            rule = registry.get(signal["rule_id"])
+            block = (rule.spec.get("correlation") if rule else None) or {}
+            if not block.get("stages") or signal["rule_id"] in stages_by_rule:
+                continue
+            try:
+                definition = stage_model.parse(block)
+            except ValueError:
+                continue
+            if not definition:
+                continue
+            stages_by_rule[signal["rule_id"]] = definition
+            series = signal.get("occurrence_series") or {}
+            started = series.get("first_time")
+            try:
+                elapsed_by_rule[signal["rule_id"]] = max(
+                    0.0, epoch(signal["last_time"]) - (float(started) if started else epoch(signal["first_time"])))
+            except (TypeError, ValueError):
+                elapsed_by_rule[signal["rule_id"]] = 0.0
+        combined = risk.combine(basis, occurrences, escalate_rules,
+                                stages_by_rule=stages_by_rule, elapsed_by_rule=elapsed_by_rule)
         top = max(basis, key=lambda s: (s["score"], s["rule_id"]))
         rule_ids = sorted({s["rule_id"] for s in basis}, key=lambda r: (r != top["rule_id"], r))
 
@@ -251,7 +275,8 @@ class EpisodeAggregator:
                    event_ids = ?, channels = ?, category = ?, mitre = ?, score = ?, base_score = ?, severity = ?,
                    severity_rank = ?, confidence = ?, active = ?, decision = ?, signal_count = ?, event_count = ?,
                    user_name = ?, process_name = ?, summary = ?, explanation = ?, sources = ?, updated_at = ?,
-                   signal_rules = ?, escalation_json = ?, occurrence_count = ?, source_mix = ?
+                   signal_rules = ?, escalation_json = ?, occurrence_count = ?, source_mix = ?,
+                   stage_json = ?
                WHERE id = ?""",
             (first_time, last_time, title, top["rule_id"], json.dumps(rule_ids),
              "," + ",".join(event_ids) + ",", json.dumps(channels), category or top.get("category") or "Other",
@@ -261,7 +286,8 @@ class EpisodeAggregator:
              json.dumps({"text": explanation, **combined}), json.dumps(sorted({s["source"] for s in basis})), now,
              json.dumps(sorted({s["rule_id"] for s in signals if s["decision"] not in ("learn_only", "shadow")})),
              json.dumps(combined.get("escalation") or {}), total_occurrences,
-             json.dumps(sorted({s["source"] for s in basis})), det_id))
+             json.dumps(sorted({s["source"] for s in basis})),
+             json.dumps(combined.get("stages") or {}), det_id))
         return True
 
 

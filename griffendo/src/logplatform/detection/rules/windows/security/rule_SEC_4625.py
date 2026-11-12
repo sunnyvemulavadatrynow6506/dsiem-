@@ -29,9 +29,16 @@ RULE = {'id': 'SEC-4625',
  'investigation': "Review the event's details: the rule matches the Event ID alone, so the activity may be "
                   'legitimate.',
  'false_positives': ['Mistyped passwords, stale saved credentials, services with expired passwords.'],
- # v6: repeated failures are what distinguishes brute force from a typo, so this rule opts in to
- # the bounded occurrence escalation (correlation/risk.py). One failure stays Low (30).
- 'correlation': {'occurrence': 1, 'timeout_seconds': 300, 'escalate': True},
+ # v6: repeated failures are what distinguishes brute force from a typo.  Two DSIEM mechanisms are
+ # used together, exactly as a DSIEM directive uses rules + stages:
+ #   * occurrence escalation (correlation/risk.py) adds a bounded logarithmic bonus per decade;
+ #   * directive stages (correlation/stages.py) walk reliability 1 -> 6 -> 9 as the burst grows,
+ #     which is DSIEM's reliability scale and its score = reliability * 10 on Griffendo's 0-100 scale.
+ # One failure stays Low (30); a sustained burst reaches High without needing a second rule.
+ 'correlation': {'occurrence': 1, 'timeout_seconds': 300, 'escalate': True,
+                 'stages': [{'occurrence': 1, 'timeout_seconds': 300, 'reliability': 1},
+                            {'occurrence': 10, 'timeout_seconds': 3600, 'reliability': 6},
+                            {'occurrence': 100, 'timeout_seconds': 7200, 'reliability': 9}]},
  'support': {'status': 'fully_supported', 'notes': 'Audit Logon (Failure).', 'optional_sources': [], 'witness': True},
  'modifications': [],
  'source': {'platform': 'Griffendo anomaly catalog (v2-v4)',

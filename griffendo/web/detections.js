@@ -199,6 +199,12 @@ function detectionParams() {
   return params;
 }
 
+function stageBlock(item) {
+  const stages = item.stages || {};
+  const rows = Object.entries(stages).map(([ruleId, s]) => `<li><b>Stage ${Number(s.stage)} of ${Number(s.stages)}</b> — rule <code>${escapeHtml(ruleId)}</code>: ${Number(s.reached_at)} occurrence(s) reached, reliability ${Number(s.reliability)}/10, stage score ${Number(s.score)}${s.next_occurrence ? ` · next stage at ${Number(s.next_occurrence)} occurrences` : " · final stage"}${s.expired ? " · <i>stage timed out</i>" : ""}</li>`).join("");
+  return rows ? `<ul class="stage-list" title="DSIEM directive stages: the score rises with each stage an indicator reaches">${rows}</ul>` : "";
+}
+
 function occurrenceTag(item) {
   /* v6: how much evidence this one episode holds. Repetition is the difference between a
      typo and a brute-force run, so it is shown inline, not hidden in a tooltip. */
@@ -355,7 +361,7 @@ async function showDetection(id) {
         ${kv("Correlation scope", escapeHtml(item.scope || "—"))}${kv("Occurrences", escapeHtml(String(item.occurrence_count || 1)))}${kv("Correlated rules", escapeHtml(String((item.rule_ids || []).length)))}</div>
         <p class="det-summary-line">${escapeHtml(item.summary || "")}</p></section>
       <section class="det-section"><h3>2 · Why it was triggered</h3>${signals}</section>
-      <section class="det-section"><h3>3 · Risk score and severity</h3>${item.escalated ? `<p class="score-decomposition"><span>Base score <b>${Number(item.base_score).toFixed(1)}</b></span><span>+ escalation <b>+${Number(item.escalation.applied).toFixed(1)}</b> (${Number(item.occurrence_count)} occurrences, capped at ${Number(item.escalation.cap).toFixed(0)})</span><span>= episode score <b>${Number(item.score).toFixed(1)}</b></span></p>` : ""}<p>${escapeHtml(item.explanation || "")}</p>
+      <section class="det-section"><h3>3 · Risk score and severity</h3>${stageBlock(item)}${item.escalated ? `<p class="score-decomposition"><span>Base score <b>${Number(item.base_score).toFixed(1)}</b></span><span>+ escalation <b>+${Number(item.escalation.applied).toFixed(1)}</b> (${Number(item.occurrence_count)} occurrences, capped at ${Number(item.escalation.cap).toFixed(0)})</span><span>= episode score <b>${Number(item.score).toFixed(1)}</b></span></p>` : ""}<p>${escapeHtml(item.explanation || "")}</p>
         ${(detail.contributors || []).length ? `<table class="data-table compact-table"><thead><tr><th>CONTRIBUTING RULE</th><th>SCORE</th><th>WEIGHT</th><th>AGE DECAY</th></tr></thead><tbody>${detail.contributors.map((c) => `<tr><td class="mono-cell">${escapeHtml(c.rule_id)}</td><td>${c.score}</td><td>${c.weight}</td><td>×${c.decay}</td></tr>`).join("")}</tbody></table>` : ""}</section>
       <section class="det-section"><h3>4 · Matched rule conditions</h3>${rules || "<p>Rule definitions are unavailable.</p>"}</section>
       <section class="det-section"><h3>5-7 · Correlated sequence and contributing events (oldest first)</h3><div class="tl-mini-list">${timeline}</div>

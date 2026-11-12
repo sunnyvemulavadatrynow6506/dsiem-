@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS det_detections (
     escalation_json TEXT NOT NULL DEFAULT '{}',
     occurrence_count INTEGER NOT NULL DEFAULT 0,
     source_mix TEXT NOT NULL DEFAULT '[]',
-    assigned_to TEXT
+    assigned_to TEXT,
+    stage_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS idx_det_active_time ON det_detections(active, det_time);
 CREATE INDEX IF NOT EXISTS idx_det_active_sev ON det_detections(active, severity_rank, det_time);
@@ -111,7 +112,8 @@ V6_SIGNAL_COLUMNS = (("correlation_key", "TEXT"), ("occurrences", "INTEGER NOT N
 V6_DETECTION_COLUMNS = (("correlation_key", "TEXT"), ("episode_bucket", "INTEGER"), ("base_score", "REAL"),
                         ("escalation_json", "TEXT NOT NULL DEFAULT '{}'"),
                         ("occurrence_count", "INTEGER NOT NULL DEFAULT 0"),
-                        ("source_mix", "TEXT NOT NULL DEFAULT '[]'"), ("assigned_to", "TEXT"))
+                        ("source_mix", "TEXT NOT NULL DEFAULT '[]'"), ("assigned_to", "TEXT"),
+                        ("stage_json", "TEXT NOT NULL DEFAULT '{}'"))
 
 
 def _columns(connection, table: str) -> set[str]:

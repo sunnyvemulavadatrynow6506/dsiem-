@@ -197,3 +197,39 @@ def test_security_4688_parent_link_is_marked_probable_not_exact(client):
     edges = [node["parent"] for node in data["nodes"] if node.get("parent")]
     assert edges and all(edge["exact"] is False for edge in edges)
     assert data["totals"]["probable_edges"] >= 1
+
+
+def test_staged_rule_escalates_through_its_stages_end_to_end(client):
+    """A DSIEM directive stage walk, through the real pipeline and the API.
+
+    SEC-4625 declares three stages (reliability 1 / 6 / 9 at 1 / 10 / 100 occurrences), so a
+    single failure is stage 1 and a long burst reaches stage 3 -- on the *same* episode.
+    """
+    from conftest import ingest
+    quiet = Builder()
+    ingest(client, [failed_logon(quiet, quiet.at(90 * 86400), "zoe", logon_type="2")])
+    burst = Builder()
+    ingest(client, brute_force(burst, 120))
+
+    items = detected(client, rule_id="SEC-4625")
+    single = [i for i in items if i["occurrence_count"] == 1][0]
+    heavy = [i for i in items if i["occurrence_count"] == 120][0]
+
+    # Stage 1 is reachable by the first occurrence, so a lone failure is staged at stage 1 with
+    # reliability 1 -> score 10; that is DSIEM's low-reliability first alarm.
+    assert single["staged"] is True and single["stage"] == 1
+    assert single["stages"]["SEC-4625"]["score"] == 10
+    assert heavy["staged"] is True
+    assert heavy["stage"] == 3
+    stage = heavy["stages"]["SEC-4625"]
+    assert (stage["stage"], stage["stages"], stage["reliability"]) == (3, 3, 9)
+    assert stage["next_occurrence"] is None
+    assert stage["score"] == 90
+    assert heavy["score"] >= stage["score"], "the stage score must reach the episode score"
+    assert heavy["score"] > single["score"]
+
+    detail = client.get(f"/api/detections/{heavy['id']}").json()
+    assert "Stage 3 of 3" in detail["explanation"]
+    assert detail["stage"] == 3
+    # The episode is still one row: staging escalates, it does not split the incident.
+    assert len([i for i in items if i["scope"] == "account admin from 203.0.113.9"]) == 1

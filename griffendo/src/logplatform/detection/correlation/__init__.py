@@ -16,6 +16,9 @@ The design follows DSIEM's proven directives in deliberate ways:
                                          match after the timeout starts a new occurrence series
     several rules fill one backlog       several rules matching the same entity/bucket join one
                                          episode (deduplication)
+    rule ``stage`` + ``reliability``      ``correlation.stages``: a series walks stage 1..N, the
+                                         reached stage's reliability sets that rule's score
+                                         (``stages.py``), so escalation over time is explicit
     backlog ``risk`` escalation          episode risk = noisy-OR over distinct rules plus a
                                          bounded, documented occurrence escalation
     alarm de-duplication by backlog id    episode id is a pure function of (entity, bucket), so
@@ -27,7 +30,8 @@ Stages (each a separate module, so a new capability does not touch the others):
     buckets.py   fixed, configurable time buckets (ordering-independent)
     state.py     threshold/occurrence state machine (pending buckets, series continuity)
     engine.py    the pipeline: signals -> classified -> correlated -> episodes -> events
-    risk.py      v5 scorer, reused unchanged; escalation lives here
+    stages.py    DSIEM directive stages: validate / evaluate / explain
+    risk.py      v5 scorer, reused; staging and bounded escalation live here
 
 The engine never discards evidence: every match is stored as a signal row with
 the events that produced it, and an episode references the signals (and so the

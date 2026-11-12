@@ -185,3 +185,60 @@ def test_same_event_matched_by_two_rules_is_corroboration_not_double_evidence():
 def test_escalation_curve_matches_documentation(value, expected):
     bonus = risk.escalate(0.0, value, enabled=True)["bonus"]
     assert abs(bonus - min(expected, CorrelationConfig().occurrence_escalation_max)) < 0.01
+
+
+# --------------------------------------------------------------------------- DSIEM stages
+def _stages(*rows):
+    return [{"occurrence": o, "timeout_seconds": t, "reliability": r} for o, t, r in rows]
+
+
+def test_stage_block_is_validated_with_actionable_errors():
+    """A rule's stages are authored by users, so a bad block must be rejected with a reason."""
+    from logplatform.detection.correlation import stages as stage_model
+    assert stage_model.parse({}) == []
+    parsed = stage_model.parse({"stages": _stages((1, 300, 1), (3, 3600, 6), (100, 7200, 10))})
+    assert [s.index for s in parsed] == [1, 2, 3]
+    with pytest.raises(ValueError, match="stage 1: occurrence must be 1"):
+        stage_model.parse({"stages": _stages((2, 300, 1))})
+    with pytest.raises(ValueError, match="must not decrease"):
+        stage_model.parse({"stages": _stages((1, 300, 1), (5, 300, 2), (4, 300, 3))})
+    with pytest.raises(ValueError, match="reliability must be 1-10"):
+        stage_model.parse({"stages": _stages((1, 300, 11))})
+
+
+def test_stage_escalates_with_occurrences_and_maps_reliability_to_score():
+    """The DSIEM contract: more occurrences -> later stage -> higher reliability -> higher score."""
+    from logplatform.detection.correlation import stages as stage_model
+    parsed = stage_model.parse({"stages": _stages((1, 600, 1), (3, 3600, 6), (10, 7200, 10))})
+    one = stage_model.evaluate(parsed, 1, 0)
+    three = stage_model.evaluate(parsed, 3, 0)
+    ten = stage_model.evaluate(parsed, 10, 0)
+    assert (one["stage"], one["score"]) == (1, 10)
+    assert (three["stage"], three["score"]) == (2, 60)
+    assert (ten["stage"], ten["score"]) == (3, 100)
+    assert one["next_occurrence"] == 3 and ten["next_occurrence"] is None
+
+
+def test_stage_expires_when_its_timeout_passes_without_escalating():
+    from logplatform.detection.correlation import stages as stage_model
+    parsed = stage_model.parse({"stages": _stages((1, 600, 1), (5, 3600, 8))})
+    assert stage_model.evaluate(parsed, 2, 900)["expired"] is True
+    assert stage_model.evaluate(parsed, 2, 100)["expired"] is False
+    # Reaching the next stage resets the waiting clock: the stage is no longer expired.
+    assert stage_model.evaluate(parsed, 5, 900)["expired"] is False
+
+
+def test_staged_rule_score_is_replaced_by_the_stage_before_the_noisy_or():
+    """A stage score must drive the episode score, not merely decorate the explanation."""
+    from logplatform.detection.correlation import stages as stage_model
+    parsed = stage_model.parse({"stages": _stages((1, 600, 1), (3, 3600, 9))})
+    signal = {"id": "a", "rule_id": "R1", "score": 10.0, "last_time": "2026-01-01T00:00:00Z",
+              "event_keys": ["e1"], "source": "rule", "confidence": "high"}
+    low = risk.combine([signal], occurrences={"R1": 1}, stages_by_rule={"R1": parsed})
+    high = risk.combine([signal], occurrences={"R1": 3}, stages_by_rule={"R1": parsed})
+    assert low["score"] == 10.0 and low["stages"]["R1"]["stage"] == 1
+    assert high["score"] == 90.0 and high["stages"]["R1"]["stage"] == 2
+    assert high["contributors"][0]["base_rule_score"] == 10.0
+    assert "stage score 90" in risk.explain(high, {})
+    # A rule without stages behaves exactly as before.
+    assert "stages" in risk.combine([signal], occurrences={"R1": 3})
