@@ -93,6 +93,21 @@ class EpisodeAggregator:
             details.setdefault("occurrences", occurrences)
             details.setdefault("correlation_key", key)
             details.setdefault("episode_bucket", bucket)
+            # A signal that a previous re-evaluation retracted is revived (not duplicated) when the
+            # same evidence matches again: its id is deterministic, so the row simply becomes active.
+            revived = connection.execute(
+                "UPDATE det_signals SET decision = ?, detection_id = ?, entity_key = ?, correlation_key = ?, "
+                "occurrences = ?, episode_bucket = ?, details_json = ?, evidence_json = ?, origin = ? "
+                "WHERE id = ? AND decision = 'retracted'",
+                (signal["decision"], episode, key, key, occurrences, bucket, json.dumps(details, default=str),
+                 json.dumps(evidence, default=str), origin, signal["id"]))
+            if revived.rowcount:
+                if signal["decision"] not in ("learn_only", "shadow"):
+                    touched.add(episode)
+                    connection.executemany(
+                        "INSERT OR IGNORE INTO det_event_index(event_key, detection_id) VALUES (?, ?)",
+                        [(k, episode) for k in signal["event_keys"]])
+                continue
             cursor = connection.execute(
                 """INSERT OR IGNORE INTO det_signals(id, rule_id, rule_rev, rule_name, source, kind, first_time,
                        last_time, detection_id, entity_key, score, severity, confidence, decision, suppression_id,

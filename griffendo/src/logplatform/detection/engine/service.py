@@ -194,25 +194,38 @@ class DetectionService:
 
     # ------------------------------------------------------------------ correlation
     def correlate(self, signals: list[dict[str, Any]], ev: dict[str, Any], t: float) -> list[dict[str, Any]]:
-        """Attach every rule match to its episode and apply the rule's occurrence requirement.
+        """Attach rule matches to their episodes using the service's live correlation state."""
+        return self._correlate_with(self.correlator, signals, ev, t, None, use_service_state=True)
 
-        This is the bridge between the v5 rule matchers (unchanged) and the v6 correlator:
+    def _correlate_with(self, correlator: CorrelationEngine, signals: list[dict[str, Any]], ev: dict[str, Any],
+                        t: float, process_key: str | None = None,
+                        use_service_state: bool = False) -> list[dict[str, Any]]:
+        """The single correlation bridge used by live processing, replay and re-evaluation.
 
-          * behaviour-model signals are already aggregated by the model and are passed
-            through untouched (they have no occurrence semantics);
-          * each deterministic match is classified (identity, occurrence policy, expiry) and
-            observed by the threshold state machine;
-          * only a match that *fires* (its occurrence requirement is met) becomes a new
-            detection contributor.  A non-firing match is still counted, and once the series
-            fires it contributes its accumulated occurrences, so a threshold of N is reported
-            as one detection with N occurrences instead of N detections;
-          * the episode that receives the match is remembered for continuity.
+        This is the only place where a v5-style rule match becomes a v6 episode contributor:
+
+          * behaviour-model signals are already aggregated by the model and pass through
+            untouched (they have no occurrence semantics);
+          * every deterministic match is classified (identity, occurrence policy, expiry) and
+            observed by the occurrence state machine;
+          * a match below its occurrence requirement is counted but not emitted, so a rule with
+            occurrence=5 produces one detection carrying five events;
+          * once the requirement is met, *every further occurrence* contributes to the same
+            episode, which is what lets a brute-force burst grow one detection and escalate its
+            score instead of stopping after the first match;
+          * the episode is remembered for continuity, so evidence that arrives after a bucket
+            boundary joins the open episode rather than opening a second one.
+
+        ``use_service_state`` picks the live process table for lineage lookups; replay paths pass
+        their own private state (the caller supplies ``process_key``).
         """
         if not signals:
             return signals
         out: list[dict[str, Any]] = []
-        ancestors = self.state.processes.ancestors(self.state.processes.resolve(
-            ev.get("process.entity_id"), ev.get("process.pid"), t)) if ev.get("process.entity_id") else None
+        ancestors = None
+        if use_service_state and ev.get("process.entity_id"):
+            ancestors = self.state.processes.ancestors(
+                self.state.processes.resolve(ev.get("process.entity_id"), ev.get("process.pid"), t))
         for signal in signals:
             if signal.get("source") == "behavior":
                 out.append(signal)
@@ -221,40 +234,32 @@ class DetectionService:
             if rule is None:
                 out.append(signal)
                 continue
-            facts = self.correlator.classify(signal, rule, t, ancestors=ancestors,
-                                            process_key=ev.get("process.entity_id"))
-            episode, bucket = self.correlator.place(facts, t)
-            observation = self.correlator.observe(facts, ev)
+            facts = correlator.classify(signal, rule, t, ancestors=ancestors,
+                                        process_key=process_key or ev.get("process.entity_id"))
+            episode, bucket = correlator.place(facts, t)
+            observation = correlator.observe(facts, ev)
             signal["episode_id"] = episode
             details = signal.setdefault("details", {})
             details["episode_bucket"] = bucket
-            details["correlation"] = {"key": facts.correlation_key, "occurrence_required": facts.required,
+            details["correlation"] = {"key": facts.correlation_key,
+                                      "occurrence_required": facts.required,
                                       "occurrence_count": observation.total,
                                       "occurrences": observation.total,
                                       "timeout_seconds": int(facts.timeout),
                                       "escalate": facts.escalate,
                                       "series_started": observation.new_series}
             details["occurrences"] = observation.total
-            self.correlator.remember(facts, episode, bucket, t)
+            correlator.remember(facts, episode, bucket, t)
             if not observation.reached:
-                # Occurrence requirement not met yet.  The match is counted by the threshold
-                # state and is reported by the signal that satisfies the requirement, so a
-                # rule with occurrence=5 produces one detection carrying five events.
                 continue
             details["occurrences"] = observation.total
             details["risk_occurrences"] = observation.count
-            # Every occurrence at or above the requirement contributes to the same episode, so
-            # a brute-force burst grows one detection (occurrence_count + escalation) instead of
-            # silently stopping after the first match.
-            signal["details"]["occurrence_series"] = {"first_time": observation.first_time,
-                                                      "count": observation.total,
-                                                      "risk_count": observation.count,
-                                                      "required": observation.required,
-                                                      "first_fire": observation.first_fire}
+            details["occurrence_series"] = {"first_time": observation.first_time,
+                                            "count": observation.total,
+                                            "risk_count": observation.count,
+                                            "required": observation.required,
+                                            "first_fire": observation.first_fire}
             if not observation.first_fire:
-                # Subsequent occurrences of the same series are corroboration, not new findings:
-                # they are stored so the episode counts them, but they must not re-raise the score
-                # from scratch (the aggregator caps one rule at its own score).
                 signal["_repeat"] = True
             if len(observation.events) > 1:
                 signal["events"] = (observation.events + signal["events"])[-25:]
@@ -513,6 +518,26 @@ class DetectionService:
                     continue
                 break
 
+    def _retract_reevaluation_signals(self, rule_id: str, job: dict[str, Any]) -> int:
+        """Mark a rule's earlier re-evaluation signals as retracted and refresh their detections.
+
+        Evidence is never deleted: the rows stay (decision='retracted') and remain auditable,
+        they simply stop contributing to a detection's score or to the active list.
+        """
+        touched: set[str] = set()
+        with self.lock, db.connect() as connection:
+            rows = connection.execute(
+                "SELECT id, detection_id FROM det_signals WHERE rule_id = ? AND origin = 'reevaluation' "
+                "AND decision != 'retracted'", (rule_id,)).fetchall()
+            for row in rows:
+                connection.execute("UPDATE det_signals SET decision = 'retracted' WHERE id = ?", (row["id"],))
+                if row["detection_id"]:
+                    touched.add(row["detection_id"])
+            if touched:
+                self.aggregator.recompute(connection, touched)
+        job["retracted"] = job.get("retracted", 0) + len(rows)
+        return len(rows)
+
     def _recompute_rule(self, rule_id: str, job: dict[str, Any]) -> None:
         with db.connect() as connection:
             ids = [row[0] for row in connection.execute(
@@ -553,10 +578,23 @@ class DetectionService:
             last_time, last_rowid = rows[-1]["event_time"], rows[-1]["_rowid"]
 
     def _reevaluate(self, rule, job: dict[str, Any]) -> None:
-        """Targeted look-back for one rule: only its sources, only the detection window, no duplicates."""
+        """Targeted look-back for one rule: only its sources, only the detection window, no duplicates.
+
+        The replay reproduces the *same* correlation as live processing: matches are fed through
+        a fresh correlation engine so a rule's historical matches land in the same episodes they
+        would have formed live.  Skipping this step was a real defect: switching a rule off and
+        on used to re-create one detection per event (100+ fragments for one brute-force run).
+
+        Signals this rule produced in a *previous* re-evaluation are retracted first, so a
+        correction replaces the old, wrongly-fragmented detections instead of piling new ones on
+        top of them.  Live-collected signals are never touched: they are the record of what the
+        engine saw as events arrived.
+        """
+        self._retract_reevaluation_signals(rule.id, job)
         private_state = StateManager()
         matcher = Matcher(private_state, self.terms)
         chains = ChainCorrelator(private_state)
+        correlator = CorrelationEngine()
         sources = list(rule.sources) + ([rule.spec["until"]] if rule.spec.get("until") else [])
         sources = [s for item in sources for s in (item.get("sources") or [item]) if "channel" in s]
         stage = self.behavior.state["stage"]
@@ -573,6 +611,7 @@ class DetectionService:
                     signals = chains.evaluate(rule, ev, t, key)
                 else:
                     signals = matcher.evaluate(rule, ev, t)
+                signals = self._correlate_with(correlator, signals, ev, t, key)
                 for signal in signals:
                     self.decider.decide(signal, stage)
                 if signals:
@@ -592,12 +631,15 @@ class DetectionService:
         channels = rule.spec["wazuh"].get("channels") or []
         private_state = StateManager()
         tree = WazuhTree(self.registry.wazuh, private_state, self.terms)
+        correlator = CorrelationEngine()
         stage = self.behavior.state["stage"]
         for rows in self._window_rows([{"channel": c} for c in channels], include_lineage=False):
             produced, finals = [], {}
             for row in rows:
                 ev = normalizer.normalize(row)
-                signals = tree.evaluate(ev, epoch(ev["@timestamp"]))
+                t = epoch(ev["@timestamp"])
+                signals = tree.evaluate(ev, t)
+                signals = self._correlate_with(correlator, signals, ev, t, None)
                 for signal in signals:
                     self.decider.decide(signal, stage)
                     finals[ev["_key"]] = signal["id"]
