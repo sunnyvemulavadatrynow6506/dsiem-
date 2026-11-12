@@ -719,3 +719,37 @@ body::before { content: ""; position: fixed; top: 0; left: 0; height: 3px; width
 body.is-loading::before { opacity: 1; width: 100%; animation: griffendo-progress 1.1s ease-in-out infinite; }
 @keyframes griffendo-progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { body.is-loading::before { animation: none; } }
+
+/* ------------------------------------------------------------------ v6 correlation engine
+   Occurrence and escalation are the difference between "one typo" and "a brute-force run",
+   so they are stated on the detection row and explained in the detail view. */
+.occurrence-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-family: var(--mono, "JetBrains Mono", ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-dim, #7c8798);
+}
+.escalation-tag {
+  padding: 1px 6px;
+  border: 1px solid rgba(232, 145, 58, .45);
+  border-radius: 3px;
+  color: #e8913a;
+  background: rgba(232, 145, 58, .08);
+}
+.score-decomposition {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-left: 2px solid var(--accent, #4c9aff);
+  background: rgba(76, 154, 255, .06);
+  font-size: 12.5px;
+}
+.score-decomposition span { display: inline-flex; gap: 6px; }
+.score-decomposition b { font-variant-numeric: tabular-nums; color: var(--text-strong, #e8eef7); }

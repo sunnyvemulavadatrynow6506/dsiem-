@@ -89,7 +89,7 @@ def detections(
     host: str | None = Query(default=None, max_length=255),
     q: str | None = Query(default=None, max_length=200),
     scope: str = Query(default="active", pattern=r"^(active|suppressed|inactive|all)$"),
-    sort: str = Query(default="time_desc", pattern=r"^(time_desc|time_asc|score_desc|severity)$"),
+    sort: str = Query(default="time_desc", pattern=r"^(time_desc|time_asc|score_desc|severity|occurrences|last_seen)$"),
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:

@@ -199,6 +199,19 @@ function detectionParams() {
   return params;
 }
 
+function occurrenceTag(item) {
+  /* v6: how much evidence this one episode holds. Repetition is the difference between a
+     typo and a brute-force run, so it is shown inline, not hidden in a tooltip. */
+  const parts = [];
+  const n = Number(item.occurrence_count || 0);
+  if (n > 1) parts.push(`${number(n)} occurrences`);
+  if (Number(item.signal_count || 0) > 1) parts.push(`${number(item.signal_count)} signals`);
+  if (Number(item.event_count || 0) > 1) parts.push(`${number(item.event_count)} events`);
+  if (!parts.length) return "";
+  const escalated = item.escalated ? `<span class="escalation-tag" title="Repetition raised the score; see the explanation">escalated</span>` : "";
+  return `<span class="occurrence-tag">${escapeHtml(parts.join(" · "))}${escalated}</span>`;
+}
+
 function detectionRow(item) {
   const mitre = (item.mitre || []).slice(0, 2).map((m) => m.technique).filter(Boolean).join(", ");
   const ids = (item.event_ids || []).slice(0, 4).join(", ") + ((item.event_ids || []).length > 4 ? "…" : "");
@@ -207,7 +220,7 @@ function detectionRow(item) {
   return `<tr class="clickable-row${item.active ? "" : " inactive-row"}${state.det.selected === item.id ? " selected-row" : ""}" data-det-id="${escapeHtml(item.id)}" tabindex="0">
     <td class="mono-cell" title="${escapeHtml(fullTime(item.det_time))}">${escapeHtml(dayTime(item.det_time))}</td>
     <td>${sevPill(item.severity)}</td><td>${riskBar(item.score)}<small class="conf">conf. ${escapeHtml(item.confidence)}</small></td>
-    <td><b class="det-title">${escapeHtml(item.title)}</b><span class="det-sub">${sources}${escapeHtml(item.summary || "")}</span>${state_}</td>
+    <td><b class="det-title">${escapeHtml(item.title)}</b><span class="det-sub">${sources}${escapeHtml(item.summary || "")}</span>${occurrenceTag(item)}${state_}</td>
     <td class="mono-cell">${escapeHtml(ids)}</td>
     <td><span class="mono-cell">${escapeHtml(item.primary_rule_id)}</span>${item.rule_ids.length > 1 ? `<small class="det-sub">+${item.rule_ids.length - 1} rule(s)</small>` : ""}</td>
     <td>${escapeHtml(item.category || "")}${mitre ? `<small class="det-sub mono-cell">${escapeHtml(mitre)}</small>` : ""}</td>
@@ -338,10 +351,11 @@ async function showDetection(id) {
         ${kv("Severity", sevPill(item.severity))}${kv("Risk score", riskBar(item.score))}${kv("Confidence", escapeHtml(item.confidence))}
         ${kv("Detection time", escapeHtml(fullTime(item.det_time)))}${kv("Last contributing event", escapeHtml(dayTime(item.last_time)))}${kv("Host", escapeHtml(item.hostname || "—"))}
         ${kv("Category", escapeHtml(item.category || "—"))}${kv("MITRE ATT&CK", escapeHtml((item.mitre || []).slice(0, 6).map((m) => `${m.technique}${m.name ? ` ${m.name}` : ""}`).join(", ") + ((item.mitre || []).length > 6 ? ` (+${item.mitre.length - 6} more in the rules below)` : "") || "—"))}${kv("Event IDs", escapeHtml(item.event_ids.join(", ")))}
-        ${kv("Channels", escapeHtml(item.channels.join(", ")))}${kv("Entity", escapeHtml(item.entity_key))}${kv("State", escapeHtml(item.active ? "Active" : item.decision === "suppressed" ? "Suppressed (known good)" : "Inactive: " + item.rule_state))}</div>
+        ${kv("Channels", escapeHtml(item.channels.join(", ")))}${kv("Entity", escapeHtml(item.entity_key))}${kv("State", escapeHtml(item.active ? "Active" : item.decision === "suppressed" ? "Suppressed (known good)" : "Inactive: " + item.rule_state))}
+        ${kv("Correlation scope", escapeHtml(item.scope || "—"))}${kv("Occurrences", escapeHtml(String(item.occurrence_count || 1)))}${kv("Correlated rules", escapeHtml(String((item.rule_ids || []).length)))}</div>
         <p class="det-summary-line">${escapeHtml(item.summary || "")}</p></section>
       <section class="det-section"><h3>2 · Why it was triggered</h3>${signals}</section>
-      <section class="det-section"><h3>3 · Risk score and severity</h3><p>${escapeHtml(item.explanation || "")}</p>
+      <section class="det-section"><h3>3 · Risk score and severity</h3>${item.escalated ? `<p class="score-decomposition"><span>Base score <b>${Number(item.base_score).toFixed(1)}</b></span><span>+ escalation <b>+${Number(item.escalation.applied).toFixed(1)}</b> (${Number(item.occurrence_count)} occurrences, capped at ${Number(item.escalation.cap).toFixed(0)})</span><span>= episode score <b>${Number(item.score).toFixed(1)}</b></span></p>` : ""}<p>${escapeHtml(item.explanation || "")}</p>
         ${(detail.contributors || []).length ? `<table class="data-table compact-table"><thead><tr><th>CONTRIBUTING RULE</th><th>SCORE</th><th>WEIGHT</th><th>AGE DECAY</th></tr></thead><tbody>${detail.contributors.map((c) => `<tr><td class="mono-cell">${escapeHtml(c.rule_id)}</td><td>${c.score}</td><td>${c.weight}</td><td>×${c.decay}</td></tr>`).join("")}</tbody></table>` : ""}</section>
       <section class="det-section"><h3>4 · Matched rule conditions</h3>${rules || "<p>Rule definitions are unavailable.</p>"}</section>
       <section class="det-section"><h3>5-7 · Correlated sequence and contributing events (oldest first)</h3><div class="tl-mini-list">${timeline}</div>

@@ -24,6 +24,9 @@ from . import behavior as beh
 from . import decision as dec
 from . import feedback as fb
 from . import model_store, normalizer, registry as reg, risk, store
+from ..correlation import aggregator as correlation_agg
+from ..correlation.engine import CorrelationEngine
+from ..correlation.identity import entity_key as correlation_entity
 from .chain import ChainCorrelator
 from .matcher import Matcher, WazuhTree, draft
 from .state import StateManager, epoch
@@ -63,7 +66,8 @@ class DetectionService:
         self.tree = WazuhTree(self.registry.wazuh, self.state, self.terms)
         self.behavior = beh.BehaviorModel(self.models.get("behavior"))
         self.decider = dec.Decider(self.state_store.suppressions())
-        self.aggregator = agg.Aggregator(lambda: self.registry)
+        self.correlator = CorrelationEngine()
+        self.aggregator = correlation_agg.EpisodeAggregator(lambda: self.registry, self.correlator)
         self.stats = {"processed": 0, "signals": 0, "batches": 0, "errors": 0, "last_error": None,
                       "last_batch_at": None, "last_batch_ms": None, "events_per_second": None, "replayed": 0,
                       "started_at": iso(utc_now())}
@@ -188,6 +192,76 @@ class DetectionService:
                 self.models.audit("lifecycle", change)
         return out
 
+    # ------------------------------------------------------------------ correlation
+    def correlate(self, signals: list[dict[str, Any]], ev: dict[str, Any], t: float) -> list[dict[str, Any]]:
+        """Attach every rule match to its episode and apply the rule's occurrence requirement.
+
+        This is the bridge between the v5 rule matchers (unchanged) and the v6 correlator:
+
+          * behaviour-model signals are already aggregated by the model and are passed
+            through untouched (they have no occurrence semantics);
+          * each deterministic match is classified (identity, occurrence policy, expiry) and
+            observed by the threshold state machine;
+          * only a match that *fires* (its occurrence requirement is met) becomes a new
+            detection contributor.  A non-firing match is still counted, and once the series
+            fires it contributes its accumulated occurrences, so a threshold of N is reported
+            as one detection with N occurrences instead of N detections;
+          * the episode that receives the match is remembered for continuity.
+        """
+        if not signals:
+            return signals
+        out: list[dict[str, Any]] = []
+        ancestors = self.state.processes.ancestors(self.state.processes.resolve(
+            ev.get("process.entity_id"), ev.get("process.pid"), t)) if ev.get("process.entity_id") else None
+        for signal in signals:
+            if signal.get("source") == "behavior":
+                out.append(signal)
+                continue
+            rule = signal.get("rule")
+            if rule is None:
+                out.append(signal)
+                continue
+            facts = self.correlator.classify(signal, rule, t, ancestors=ancestors,
+                                            process_key=ev.get("process.entity_id"))
+            episode, bucket = self.correlator.place(facts, t)
+            observation = self.correlator.observe(facts, ev)
+            signal["episode_id"] = episode
+            details = signal.setdefault("details", {})
+            details["episode_bucket"] = bucket
+            details["correlation"] = {"key": facts.correlation_key, "occurrence_required": facts.required,
+                                      "occurrence_count": observation.total,
+                                      "occurrences": observation.total,
+                                      "timeout_seconds": int(facts.timeout),
+                                      "escalate": facts.escalate,
+                                      "series_started": observation.new_series}
+            details["occurrences"] = observation.total
+            self.correlator.remember(facts, episode, bucket, t)
+            if not observation.reached:
+                # Occurrence requirement not met yet.  The match is counted by the threshold
+                # state and is reported by the signal that satisfies the requirement, so a
+                # rule with occurrence=5 produces one detection carrying five events.
+                continue
+            details["occurrences"] = observation.total
+            details["risk_occurrences"] = observation.count
+            # Every occurrence at or above the requirement contributes to the same episode, so
+            # a brute-force burst grows one detection (occurrence_count + escalation) instead of
+            # silently stopping after the first match.
+            signal["details"]["occurrence_series"] = {"first_time": observation.first_time,
+                                                      "count": observation.total,
+                                                      "risk_count": observation.count,
+                                                      "required": observation.required,
+                                                      "first_fire": observation.first_fire}
+            if not observation.first_fire:
+                # Subsequent occurrences of the same series are corroboration, not new findings:
+                # they are stored so the episode counts them, but they must not re-raise the score
+                # from scratch (the aggregator caps one rule at its own score).
+                signal["_repeat"] = True
+            if len(observation.events) > 1:
+                signal["events"] = (observation.events + signal["events"])[-25:]
+                signal["event_keys"] = [item["_key"] for item in signal["events"]]
+            out.append(signal)
+        return out
+
     def process_rows(self, rows: list, origin: str = "live", persist: bool = True,
                      use_behavior: bool = True) -> dict[str, int]:
         events = []
@@ -199,6 +273,7 @@ class DetectionService:
         produced = []
         for t, ev in events:
             signals = self.evaluate_event(ev, t, use_behavior=use_behavior)
+            signals = self.correlate(signals, ev, t)
             for signal in signals:
                 self.decider.decide(signal, stage)
             if signals:
@@ -328,14 +403,19 @@ class DetectionService:
             last_time, last_rowid = rows[-1]["event_time"], rows[-1]["_rowid"]
 
     def _max_window(self) -> int:
+        """Longest look-back the replay must rebuild: every rule window *and* the v6
+        correlation horizon, so a restart restores occurrence series and open episodes
+        exactly as they were (otherwise a series could restart its count after a restart)."""
         longest = 3600
         for rule in self.registry.rules.values():
             spec = rule.spec
+            timeout = (spec.get("correlation") or {}).get("timeout_seconds")
             for value in ((spec.get("maxspan")), (spec.get("threshold") or {}).get("window_seconds"),
                           (spec.get("chain") or {}).get("window_seconds"),
-                          (spec.get("wazuh") or {}).get("timeframe")):
+                          (spec.get("wazuh") or {}).get("timeframe"), timeout):
                 if isinstance(value, int):
                     longest = max(longest, value)
+        longest = max(longest, self.correlator.bucketer.width * 2)
         return min(longest, 7 * 86400)
 
     def _maybe_save_model(self, force: bool = False) -> None:

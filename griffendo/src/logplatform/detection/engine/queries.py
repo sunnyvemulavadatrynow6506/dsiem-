@@ -23,11 +23,14 @@ _CACHE: dict[str, tuple[float, Any]] = {}
 _LOCK = threading.Lock()
 TTL = 120.0      # results are keyed on the detection data version, so this only bounds clock drift of 'last 7 days'
 SORTS = {"time_desc": "det_time DESC, id DESC", "time_asc": "det_time ASC, id ASC",
-         "score_desc": "score DESC, det_time DESC, id DESC", "severity": "severity_rank ASC, det_time DESC, id DESC"}
+         "score_desc": "score DESC, det_time DESC, id DESC", "severity": "severity_rank ASC, det_time DESC, id DESC",
+         "occurrences": "occurrence_count DESC, det_time DESC, id DESC",
+         "last_seen": "last_time DESC, id DESC"}
 DETECTION_COLUMNS = ("id, entity_key, hostname, det_time, last_time, title, primary_rule_id, rule_ids, signal_rules, event_ids, "
                      "channels, category, mitre, score, severity, severity_rank, confidence, active, decision, "
                      "signal_count, event_count, user_name, process_name, summary, explanation, sources, status, "
-                     "verdict, status_updated_at, suppression_id, created_at, updated_at")
+                     "verdict, status_updated_at, suppression_id, created_at, updated_at, correlation_key, "
+                     "episode_bucket, base_score, escalation_json, occurrence_count, source_mix")
 
 
 def invalidate() -> None:
@@ -89,7 +92,27 @@ def _row(row, registry) -> dict[str, Any]:
     item["rule_state"] = ("enabled" if primary and primary.enabled else "disabled" if primary
                           else "deleted" if item["primary_rule_id"] in registry.retired else "unknown")
     item["active"] = bool(item["active"])
+    # v6 correlation fields (a v5 row was backfilled with its own values, so these are never null).
+    escalation = json.loads(item.pop("escalation_json", None) or "{}")
+    item["base_score"] = item["base_score"] if item["base_score"] is not None else item["score"]
+    item["escalation"] = escalation if isinstance(escalation, dict) else {}
+    item["escalated"] = bool(item["escalation"].get("applied"))
+    item["occurrence_count"] = int(item.get("occurrence_count") or 0)
+    item["source_mix"] = json.loads(item.pop("source_mix", None) or "[]")
+    item["scope"] = _scope_label(item.get("correlation_key"))
     return item
+
+
+def _scope_label(correlation_key: Any) -> str:
+    """Human-readable scope of an episode, derived from its correlation key."""
+    if not correlation_key:
+        return "unknown"
+    parts = str(correlation_key).split("|")
+    if len(parts) >= 4 and parts[1] == "auth":
+        return f"account {parts[2]} from {parts[3] if parts[3] != 'local' else 'this host'}"
+    if len(parts) >= 3 and parts[1] == "proc":
+        return "process tree"
+    return "all activity of this actor"
 
 
 def _where(params: dict[str, Any], registry) -> tuple[str, list[Any]]:

@@ -40,7 +40,7 @@ def main() -> None:
     from fakelog import FakeLog
     from logplatform.app import app
 
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=args.port, log_level="warning"))
+    server = uvicorn.Server(uvicorn.Config(app, host="0.0.0.0", port=args.port, log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
     while not server.started:
         time.sleep(0.05)

@@ -29,6 +29,9 @@ RULE = {'id': 'SEC-4625',
  'investigation': "Review the event's details: the rule matches the Event ID alone, so the activity may be "
                   'legitimate.',
  'false_positives': ['Mistyped passwords, stale saved credentials, services with expired passwords.'],
+ # v6: repeated failures are what distinguishes brute force from a typo, so this rule opts in to
+ # the bounded occurrence escalation (correlation/risk.py). One failure stays Low (30).
+ 'correlation': {'occurrence': 1, 'timeout_seconds': 300, 'escalate': True},
  'support': {'status': 'fully_supported', 'notes': 'Audit Logon (Failure).', 'optional_sources': [], 'witness': True},
  'modifications': [],
  'source': {'platform': 'Griffendo anomaly catalog (v2-v4)',

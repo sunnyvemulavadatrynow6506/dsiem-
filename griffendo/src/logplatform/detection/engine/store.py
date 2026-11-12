@@ -33,7 +33,11 @@ CREATE TABLE IF NOT EXISTS det_signals (
     evidence_json TEXT NOT NULL,
     details_json TEXT NOT NULL,
     origin TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    correlation_key TEXT,
+    occurrences INTEGER NOT NULL DEFAULT 1,
+    episode_bucket INTEGER,
+    expires_at TEXT
 );
 -- v5.1: covering index, so the Rules page's per-rule counts never read the wide signal rows
 -- (8.5 s cold at 540,000 signals before, and it replaces idx_det_signals_rule).
@@ -74,7 +78,14 @@ CREATE TABLE IF NOT EXISTS det_detections (
     status_updated_at TEXT,
     suppression_id TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    correlation_key TEXT,
+    episode_bucket INTEGER,
+    base_score REAL,
+    escalation_json TEXT NOT NULL DEFAULT '{}',
+    occurrence_count INTEGER NOT NULL DEFAULT 0,
+    source_mix TEXT NOT NULL DEFAULT '[]',
+    assigned_to TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_det_active_time ON det_detections(active, det_time);
 CREATE INDEX IF NOT EXISTS idx_det_active_sev ON det_detections(active, severity_rank, det_time);
@@ -91,6 +102,67 @@ CREATE TABLE IF NOT EXISTS det_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
+# ---------------------------------------------------------------------------- v6 migration
+# Columns added by the v6 correlation engine.  Existing rows keep their data; the new
+# columns are filled by `backfill_v6` so historical detections stay queryable and keep
+# their original, already computed score (nothing is recomputed or deleted).
+V6_SIGNAL_COLUMNS = (("correlation_key", "TEXT"), ("occurrences", "INTEGER NOT NULL DEFAULT 1"),
+                     ("episode_bucket", "INTEGER"), ("expires_at", "TEXT"))
+V6_DETECTION_COLUMNS = (("correlation_key", "TEXT"), ("episode_bucket", "INTEGER"), ("base_score", "REAL"),
+                        ("escalation_json", "TEXT NOT NULL DEFAULT '{}'"),
+                        ("occurrence_count", "INTEGER NOT NULL DEFAULT 0"),
+                        ("source_mix", "TEXT NOT NULL DEFAULT '[]'"), ("assigned_to", "TEXT"))
+
+
+def _columns(connection, table: str) -> set[str]:
+    return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+
+def migrate(connection) -> list[str]:
+    """Add the v6 columns to an existing store.  Idempotent; never drops or rewrites rows."""
+    added = []
+    for table, columns in (("det_signals", V6_SIGNAL_COLUMNS), ("det_detections", V6_DETECTION_COLUMNS)):
+        existing = _columns(connection, table)
+        for name, kind in columns:
+            if name not in existing:
+                connection.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+                added.append(f"{table}.{name}")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_det_corr ON det_detections(correlation_key, det_time)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_det_escalation ON det_detections(occurrence_count, det_time)")
+    if added:
+        # Mark the migrated rows so the service knows the replay must rebuild episode state.
+        meta_set(connection, "engine_version", "6")
+        meta_set(connection, "migrated_at", __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat())
+    return added
+
+
+def backfill_v6(connection) -> int:
+    """Give pre-v6 detections their episode columns, so pages and filters treat them uniformly.
+
+    The historical score is preserved as-is (it was computed by the v5 scorer and shown to
+    analysts then); only the new descriptive columns are derived from data already stored.
+    """
+    changed = 0
+    rows = connection.execute(
+        "SELECT id, entity_key, bucket, score, signal_count FROM det_detections "
+        "WHERE correlation_key IS NULL OR base_score IS NULL").fetchall()
+    for row in rows:
+        count = connection.execute("SELECT COUNT(*) FROM det_signals WHERE detection_id = ?",
+                                   (row["id"],)).fetchone()[0]
+        basis = connection.execute(
+            "SELECT COUNT(DISTINCT rule_id), COUNT(*) FROM det_signals WHERE detection_id = ? "
+            "AND decision NOT IN ('learn_only', 'shadow', 'retracted')", (row["id"],)).fetchone()
+        connection.execute(
+            "UPDATE det_detections SET correlation_key = COALESCE(correlation_key, entity_key), "
+            "episode_bucket = COALESCE(episode_bucket, bucket), base_score = COALESCE(base_score, score), "
+            "occurrence_count = ?, source_mix = ? WHERE id = ?",
+            (basis[1] or count or 0,
+             __import__("json").dumps(["legacy-v5"]), row["id"]))
+        changed += 1
+    return changed
+
+
 def initialize(tables_only: bool = False) -> None:
     """Create the detection tables (and, unless tables_only, their indexes).
 
@@ -103,6 +175,8 @@ def initialize(tables_only: bool = False) -> None:
             connection.executescript(";\n".join(statements) + ";")
         else:
             connection.executescript(SCHEMA)
+        # A store created by v5 (or earlier) is upgraded in place; its rows are kept.
+        migrate(connection)
 
 
 def meta_get(key: str, default: str | None = None) -> str | None:
