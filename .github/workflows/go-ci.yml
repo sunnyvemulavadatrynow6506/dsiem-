@@ -22,6 +22,11 @@ env:
   # CI must use the committed dependency graph without running go mod tidy.
   GOFLAGS: '-mod=vendor'
 
+# The Go project lives in the dsiem/ subdirectory of this repository.
+defaults:
+  run:
+    working-directory: dsiem
+
 # Actions use immutable SHAs; Dependabot maintains the pins. Scanner versions
 # are deliberate pins and must be reviewed separately when updating Go.
 # Check failures stay visible. Required-check policy is configured in GitHub.
@@ -38,7 +43,7 @@ jobs:
       - name: Set up project Go toolchain
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: dsiem/go.mod
       - name: Verify vendored dependencies
         run: go list -mod=vendor ./...
       - name: Go vet
@@ -61,7 +66,7 @@ jobs:
       - name: Set up project Go toolchain
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: dsiem/go.mod
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
@@ -82,7 +87,7 @@ jobs:
       - name: Set up project Go toolchain
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: dsiem/go.mod
       # Build independently so a scanner failure does not hide build failures.
       - name: Build production commands
         run: |
@@ -113,7 +118,7 @@ jobs:
       - name: Set up project Go toolchain
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: dsiem/go.mod
       - name: Scan
         run: govulncheck ./...
 
@@ -141,7 +146,7 @@ jobs:
       - name: Set up project Go toolchain
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version-file: go.mod
+          go-version-file: dsiem/go.mod
       - name: Scan
         run: gosec -severity medium -confidence medium ./...
 
@@ -188,7 +193,7 @@ jobs:
       - name: Prepare Dockerfiles for scanning
         run: |
           mkdir -p "$RUNNER_TEMP/dockerfiles/0"
-          cp "deployments/docker/build/Dockerfile" "$RUNNER_TEMP/dockerfiles/0/Dockerfile"
+          cp "dsiem/deployments/docker/build/Dockerfile" "$RUNNER_TEMP/dockerfiles/0/Dockerfile"
       - name: Scan Dockerfile configuration
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

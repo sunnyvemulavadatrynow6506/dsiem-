@@ -1,108 +1,71 @@
-# Dsiem 
+# dsiem + Griffendo
 
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/defenxor/dsiem/tree/master.svg?style=shield)](https://dl.circleci.com/status-badge/redirect/gh/defenxor/dsiem/tree/master)
- [![Codecov](https://codecov.io/gh/defenxor/dsiem/branch/master/graph/badge.svg?token=3446slNekt)](https://codecov.io/gh/defenxor/dsiem) [![Go Report Card](https://goreportcard.com/badge/defenxor/dsiem)](https://goreportcard.com/report/defenxor/dsiem) [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) 
+This repository holds two independent projects side by side. They are kept as
+separate, self-contained codebases so that each one can still be built, tested
+and run on its own.
 
-Dsiem is a security event correlation engine for [ELK stack](https://www.elastic.co/elk-stack), allowing the platform to be used as a dedicated and full-featured [SIEM](https://en.wikipedia.org/wiki/Security_information_and_event_management) system.
+| Directory    | Project                                  | Language | What it does |
+|--------------|------------------------------------------|----------|--------------|
+| [`dsiem/`](dsiem/)       | Dsiem — correlation engine   | Go (1.23, vendored deps) | OSSIM-style directive/correlation engine for ELK. Consumes normalised events, applies directive rules (including cross-event, time-windowed correlation), and raises risk-adjusted alarms. |
+| [`griffendo/`](griffendo/) | Griffendo v5.1 — Windows event intelligence | Python 3.11 (FastAPI + web dashboard) | Collects Windows Event Log / Sysmon events, matches them against a rule inventory, correlates multi-step activity, scores risk and raises alerts by severity. |
 
-Dsiem provides [OSSIM](https://www.alienvault.com/products/ossim)-style correlation for normalized logs/events, perform lookup/query to threat intelligence and vulnerability information sources, and produces risk-adjusted alarms.
+The goal of putting them in one repository is to **bring dsiem's correlation
+logic into Griffendo**, so the plan is to work on them here while keeping the
+two trees independently runnable.
 
-![Example Kibana Dashboard](/docs/images/kbn-dashboard.png)
+---
 
-## Features
+## dsiem/
 
-* Runs in standalone or clustered mode with [NATS](https://nats.io/) as messaging bus between frontend and backend nodes. Along with ELK, this made the entire SIEM platform horizontally scalable.
-* OSSIM-style correlation and directive rules, bridging easier transition from OSSIM.
-* Alarms enrichment with data from threat intel and vulnerability information sources. Builtin support for [Arkime Wise](https://arkime.com/wise) (which supports Alienvault OTX and others) and Nessus CSV exports. Support for other sources can easily be implemented as [plugins](https://github.com/defenxor/dsiem/blob/master/docs/ti_vuln_plugins.md#about-threat-intel-lookup-plugin).
-* Instrumentation supported through Metricbeat and/or Elastic APM server. No need extra stack for this purpose.
-* Builtin rate and back-pressure control, set the minimum and maximum events/second (EPS) received from Logstash depending on your hardware capacity and acceptable delays in event processing.
-* Loosely coupled, designed to be composable with other infrastructure platform, and doesn't try to do everything. Loose coupling also means that it's possible to use Dsiem as an OSSIM-style correlation engine with non ELK stack if needed.
-* Batteries included:
-    * A directive conversion tool that reads OSSIM XML directive file and translate it to Dsiem JSON-style config.
-    * A SIEM plugin creator tool that will read off an existing index pattern from Elasticsearch, and creates the necessary Logstash configuration to clone the relevant fields' content to Dsiem. The tool can also generate basic directive required by Dsiem to correlate received events and generate alarm.
-    * A helper tool to serve Nessus CSV files over the network to Dsiem.
-    * A light weight Angular web UI just for basic alarms management (closing, tagging), and easy pivoting to the relevant indices in Kibana to perform the actual analysis.
-* Obviously a cloud-native, twelve-factor app, and all that jazz.
+The original Dsiem source, unchanged apart from being moved into `dsiem/`.
 
-## How It Works
-
-```mermaid
-flowchart TB
-
-l1 --> |Normalized Logs/Events| e1
-l1 --> |Alarms|e1
-l1 --> |Normalized Logs/Events| d1
-
-f1 --> |Logs| l1
-
-s1 --> |Logs| f1
-s2 --> |Logs| f1
-s3 --> |Logs| f1
-
-d1 --> |Alarms| d2
-d2 --> |Alarms| l1
-d1 --> |Query| d3
-
-subgraph Elasticsearch
-  e1[Elasticsearch]
-end
-
-subgraph Logstash
-  l1[Logstash] 
-end
-
-subgraph Filebeat
- f1[Syslog/Filebeat]
-end
-
-subgraph Log Sources
-  s1[IDS]
-  s2[Firewall]
-  s3[OS]
-end
-
-subgraph Dsiem
-  d1[Dsiem]
-  d2[Dsiem-filebeat]
-  d3[Threat-Intel/Vulnerability-Info-Sources]
-end
+```bash
+cd dsiem
+go build ./cmd/...                  # uses the vendored dependency tree
+go test ./...
 ```
 
-On the diagram above:
+See [`dsiem/README.md`](dsiem/README.md) for the full documentation (configs,
+directives, clustering with NATS, threat-intel plugins, web UI, Docker demo).
 
-1. Log sources send their logs to Syslog/Filebeat, which then sends them to Logstash with a unique identifying field. Logstash then parses the logs using different filters based on the log sources type, and sends the results to Elasticsearch, typically creating a single index pattern for each log type (e.g. `suricata-*` for logs received from Suricata IDS, `ssh-*` for SSH logs, etc.).
+Key places for the correlation work:
 
-1. Dsiem uses a special purpose logstash config file to clone incoming event from log sources, right after logstash has done parsing it. Through the same config file, the new cloned event is used (independently from the original event) to collect Dsiem required fields like Title, Source IP, Destination IP, and so on.
-    
-1. The output of the above step is called *Normalized Event* because it represent logs from multiple different sources in a single format that has a set of common fields. Those events are then sent to Dsiem through Logstash HTTP output plugin, and to Elasticsearch under index name pattern `siem_events-*`.
+- `dsiem/internal/pkg/dsiem/` — the engine: directive handling, event
+  correlation, alarm generation.
+- `dsiem/configs/` — directive and config examples.
+- `dsiem/cmd/dsiem/` — the server entrypoint.
 
-1. Dsiem correlates incoming normalized events based on the configured directive rules, perform threat intel and vulnerability lookups, and then generates an alarm if the rules conditions are met. The alarm is then written to a local log file, that is harvested by a local Filebeat configured to send its content to Logstash.
+## griffendo/
 
-1. At the logstash end, there's another Dsiem [special config file](https://github.com/defenxor/dsiem/blob/master/deployments/docker/conf/logstash/conf.d/80_siem.conf) that reads those submitted alarms and push them to the final SIEM alarm index in Elasticsearch.
-    
-The final result of the above processes is that now we can watch for new alarms and updates to an existing one just by monitoring a single Elasticsearch index.
+The Griffendo v5.1 sources, extracted from `Griffendo_v5.1_source.zip`.
 
-## Installation
+```bash
+cd griffendo
+python -m pytest tests              # synthetic events, no Windows required
+python tools/demo_server.py         # dashboard + collector against a synthetic live log
+```
 
-You can use Docker Compose or the release binaries to install Dsiem. Refer to the [Installation Guide](https://github.com/defenxor/dsiem/blob/master/docs/installation.md) for details.
+Requirements: Python 3.11 with `fastapi`, `pydantic`, `uvicorn`, `requests`,
+`openpyxl` (and `httpx` + `pytest` for the test suite). See
+[`griffendo/README.md`](griffendo/README.md) for the environment variables,
+engine settings and the report describing the v5.1 detection engine.
 
-Alternatively, there's also a Docker Compose or virtual machine-based [demo environment](https://github.com/defenxor/dsiem/tree/master/demo) that you can use to evaluate all Dsiem integration from one simple web interface.
+Key places for the correlation work:
 
-## Documentation
+- `griffendo/src/logplatform/detection/engine/` — detection/correlation engine
+  (`matcher.py`, `aggregator.py`, `chain.py`, `behavior.py`, `decision.py`).
+- `griffendo/src/logplatform/detection/rules/` — one Python file per rule,
+  loaded through `rules/index.py`.
+- `griffendo/src/agent/` — the Windows event collector.
+- `griffendo/catalog/anomaly_catalog.json` — the built-in rule catalogue.
 
-Currently available docs are located [here](https://github.com/defenxor/dsiem/blob/master/docs/).
+---
 
-## Reporting Bugs and Issues
+## CI
 
-Please submit bug and issue reports by opening a new Github [issue](https://github.com/defenxor/dsiem/issues/new). Security-sensitive information, like details of a potential security bug, may also be sent to devs@defenxor.com. The GPG public key for that address can be found [here](https://pgp.mit.edu/pks/lookup?search=devs%40defenxor.com).
-
-
-## How to Contribute
-
-Contributions are very welcome! Submit PR for bug fixes and additional tests, gist for Logstash config files to parse device events, SIEM directive rules, or a new threat intel/vulnerability lookup plugins.
-
-If you're not sure on what to do on a particular matter, feel free to open an <a href="https://github.com/defenxor/dsiem/issues"> issue</a> and discuss first.
-
-## License
-
-The project is licensed under <a href="https://github.com/defenxor/dsiem/blob/master/LICENSE">GPLv3</a>. Contributors are not required to sign any form of CAA/CLA or a like: We consider their acceptance of <a href="https://help.github.com/articles/github-terms-of-service/#6-contributions-under-repository-license">this Github terms of service clause</a> to be sufficient.
+Continuous integration for dsiem lives at the repository root (`.github/`,
+`.circleci/`) because those are the only locations the providers read. The
+workflows are configured with `working-directory: dsiem` and reference
+`dsiem/go.mod`, so they keep building and testing the Go project from its
+new location. Griffendo's tests are run directly with `pytest` from
+`griffendo/`.

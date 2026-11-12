@@ -1,0 +1,71 @@
+{
+  "label": "v3 disk 1M batch 5000",
+  "src": "src",
+  "events": 1000000,
+  "batch": 5000,
+  "ingest_seconds": 560.52,
+  "ingest_events_per_sec": 1784,
+  "first_batch_seconds": 0.774,
+  "payload_mb": 1047.5,
+  "rss_mb_start": 49.4,
+  "rss_mb_after_ingest": 158.4,
+  "api": {
+    "overview": {
+      "first_ms": 4492.0,
+      "median_ms": 1.8,
+      "bytes": 2346
+    },
+    "events_page1": {
+      "first_ms": 17.6,
+      "median_ms": 17.6,
+      "bytes": 42087
+    },
+    "events_filtered": {
+      "first_ms": 134.1,
+      "median_ms": 129.9,
+      "bytes": 41828
+    },
+    "timeline_legacy_100": {
+      "first_ms": 4.9,
+      "median_ms": 3.8,
+      "bytes": 31534
+    },
+    "anomaly_summary": {
+      "first_ms": 7241.0,
+      "median_ms": 998.8,
+      "bytes": 13357
+    },
+    "anomalies_page": {
+      "first_ms": 9.4,
+      "median_ms": 8.3,
+      "bytes": 49945
+    },
+    "timeline_page_200": {
+      "first_ms": 105.4,
+      "median_ms": 95.2,
+      "bytes": 93684
+    },
+    "timeline_page_filtered": {
+      "first_ms": 244.0,
+      "median_ms": 244.0,
+      "bytes": 102236
+    },
+    "rules": {
+      "first_ms": 5.5,
+      "median_ms": 5.1,
+      "bytes": 159953
+    },
+    "live": {
+      "first_ms": 2.3,
+      "median_ms": 2.1,
+      "bytes": 293
+    }
+  },
+  "timeline_full_walk": {
+    "pages": 1864,
+    "events": 931785,
+    "seconds": 368.68,
+    "window_total_reported": 931785
+  },
+  "rss_mb_end": 160.8
+}

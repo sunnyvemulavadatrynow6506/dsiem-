@@ -1,0 +1,57 @@
+{
+  "version": "v4",
+  "events": 200000,
+  "ingest_seconds": 47.7,
+  "ingest_events_per_sec": 4195,
+  "rss_mb_after_ingest": 146.5,
+  "rss_mb_after_processing": 146.5,
+  "pages": {
+    "overview": {
+      "cold_ms": 858.4,
+      "warm_ms": 11.8,
+      "bytes": 21742,
+      "calls": [
+        "/api/overview",
+        "/api/anomalies/summary"
+      ]
+    },
+    "endpoint": {
+      "cold_ms": 965.2,
+      "warm_ms": 987.7,
+      "bytes": 197195,
+      "calls": [
+        "/api/hosts",
+        "/api/events"
+      ]
+    },
+    "timeline": {
+      "cold_ms": 510.5,
+      "warm_ms": 14.3,
+      "bytes": 200704,
+      "calls": [
+        "/api/timeline/anomalies",
+        "/api/timeline/facets"
+      ]
+    },
+    "detections": {
+      "cold_ms": 39.3,
+      "warm_ms": 36.8,
+      "bytes": 301941,
+      "calls": [
+        "/api/anomalies",
+        "/api/rules",
+        "/api/anomalies/summary"
+      ]
+    },
+    "events": {
+      "cold_ms": 16.3,
+      "warm_ms": 14.0,
+      "bytes": 98273,
+      "calls": [
+        "/api/events"
+      ]
+    },
+    "events_last_hour": null
+  },
+  "rss_mb_end": 146.7
+}

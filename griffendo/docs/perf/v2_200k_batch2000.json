@@ -1,0 +1,60 @@
+{
+  "label": "v2 baseline",
+  "src": "/tmp/claude-0/-home-claude/3153e8c5-b7f7-5274-9156-2d22c6b32833/scratchpad/v2tree/src",
+  "events": 200000,
+  "batch": 2000,
+  "ingest_seconds": 36.88,
+  "ingest_events_per_sec": 5422,
+  "first_batch_seconds": 0.321,
+  "payload_mb": 209.2,
+  "rss_mb_start": 49.2,
+  "rss_mb_after_ingest": 595.3,
+  "api": {
+    "overview": {
+      "first_ms": 576.3,
+      "median_ms": 531.2,
+      "bytes": 2334
+    },
+    "events_page1": {
+      "first_ms": 5.2,
+      "median_ms": 5.2,
+      "bytes": 37997
+    },
+    "events_filtered": {
+      "first_ms": 29.2,
+      "median_ms": 21.3,
+      "bytes": 37662
+    },
+    "timeline_legacy_100": {
+      "first_ms": 3.5,
+      "median_ms": 2.9,
+      "bytes": 31501
+    },
+    "anomaly_summary": {
+      "first_ms": 196.0,
+      "median_ms": 196.0,
+      "bytes": 6214
+    },
+    "anomalies_page": {
+      "first_ms": 6.4,
+      "median_ms": 5.2,
+      "bytes": 45829
+    },
+    "timeline_page_200": {
+      "error": "HTTP Error 404: Not Found"
+    },
+    "timeline_page_filtered": {
+      "error": "HTTP Error 404: Not Found"
+    },
+    "rules": {
+      "error": "HTTP Error 404: Not Found"
+    },
+    "live": {
+      "error": "HTTP Error 404: Not Found"
+    }
+  },
+  "timeline_full_walk": {
+    "error": "HTTP Error 404: Not Found"
+  },
+  "rss_mb_end": 597.4
+}

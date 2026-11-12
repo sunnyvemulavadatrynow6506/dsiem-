@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123b63">
+  <title>Griffendo | Windows Event Intelligence</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+  <script src="/assets/detections.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="Griffendo home">
+        <img class="brand-mark" src="/assets/griffendo-mark.svg" alt="">
+        <span><strong>Griffendo</strong><small>EVENT INTELLIGENCE</small></span>
+      </a>
+      <div class="side-label">WORKSPACE</div>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <button class="nav-item active" data-view="overview"><span class="nav-glyph">&#9632;</span>Overview</button>
+        <button class="nav-item" data-view="detections"><span class="nav-glyph">&#9888;</span>Detections<span class="nav-count" id="detection-nav-count" hidden></span></button>
+        <button class="nav-item" data-view="rules"><span class="nav-glyph">&#9881;</span>Rules</button>
+        <button class="nav-item" data-view="events"><span class="nav-glyph">&#9776;</span>Event explorer</button>
+        <button class="nav-item" data-view="processes"><span class="nav-glyph">&#8627;</span>Processes</button>
+        <button class="nav-item" data-view="timeline"><span class="nav-glyph">&#8942;</span>Timeline</button>
+        <button class="nav-item" data-view="endpoints"><span class="nav-glyph">&#9638;</span>Endpoint</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-foot">Windows telemetry<br>Collection stays close to source.</div>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="breadcrumb"><span>WORKSPACE</span><span class="crumb-slash">/</span><b id="crumb-title">Overview</b></div>
+        <div class="top-actions">
+          <div class="connection-state" id="connection-state"><span class="state-dot"></span><span>Connecting</span></div>
+          <span class="refresh-status" id="refresh-status" role="status" aria-live="polite"></span>
+          <button class="refresh-button" id="refresh-button" title="Collect new events now and reload every view"><span class="refresh-icon" aria-hidden="true">&#8635;</span><span class="refresh-label">Refresh</span></button>
+        </div>
+      </header>
+
+      <section class="page-heading">
+        <div><p class="eyebrow" id="page-eyebrow">SECURITY OPERATIONS / WINDOWS</p><h1 id="page-title">Signal, at a glance.</h1><p class="page-description" id="page-description">A live view of collected Windows event activity.</p></div>
+        <div class="range-label"><span class="range-pip"></span> <span id="range-text">COUNTS · ALL RETAINED · GRAPH LAST 24 H</span></div>
+      </section>
+
+      <section id="view-overview" class="view-panel active" aria-label="Overview">
+        <div class="metric-grid" id="metric-grid"></div>
+        <section class="surface det-overview" aria-label="Detections overview">
+          <div class="section-heading"><div><span class="section-kicker">DETECTIONS · LAST 7 DAYS</span><h2>Detections overview</h2></div>
+            <span class="chart-unit" id="det-overview-updated">LOADING</span></div>
+          <div class="det-status-row" id="det-status-row"></div>
+          <div class="det-columns" id="det-columns"></div>
+        </section>
+        <section class="surface quick-lists" aria-label="Quick lists">
+          <div class="quick-buttons" role="group" aria-label="Show a list">
+            <button class="quick-button" data-quick="hosts" aria-expanded="false">Hosts</button>
+            <button class="quick-button" data-quick="processes" aria-expanded="false">Processes</button>
+            <button class="quick-button" data-quick="eventids" aria-expanded="false">Event IDs</button>
+            <button class="quick-button" data-quick="channels" aria-expanded="false">Channels</button>
+            <button class="quick-button" data-quick="recent" aria-expanded="false">Recent events</button>
+          </div>
+          <div id="quick-panel" class="quick-panel" hidden></div>
+        </section>
+        <div class="overview-grid">
+          <section class="surface trend-surface">
+            <div class="section-heading"><div><span class="section-kicker">VOLUME · LAST 24 HOURS</span><h2>Event activity</h2></div><span class="chart-unit" id="trend-unit">EVENTS / HOUR · LOCAL TIME</span></div>
+            <div id="trend-legend" class="trend-legend" aria-label="Event categories"></div>
+            <div id="trend-chart" class="trend-chart"></div>
+            <div class="trend-foot"><span id="trend-note" class="trend-note"></span><button type="button" class="text-action" id="trend-table-toggle" aria-expanded="false">Show as table</button></div>
+            <div id="trend-table" class="trend-table" hidden></div>
+          </section>
+          <section class="surface event-id-surface">
+            <div class="section-heading"><div><span class="section-kicker">DISTRIBUTION</span><h2>Frequent event IDs</h2></div><button class="text-action" data-go="events">Explore <span aria-hidden="true">&#8594;</span></button></div>
+            <div id="event-id-list" class="rank-list"></div>
+          </section>
+        </div>
+        <div class="overview-grid lower-grid">
+          <section class="surface process-surface">
+            <div class="section-heading"><div><span class="section-kicker">EXECUTION</span><h2>Process activity</h2></div><button class="text-action" data-go="processes">View processes <span aria-hidden="true">&#8594;</span></button></div>
+            <div id="process-preview" class="process-preview"></div>
+          </section>
+          <section class="surface channel-surface">
+            <div class="section-heading"><div><span class="section-kicker">COLLECTION</span><h2>Channels</h2></div></div>
+            <div id="channel-list" class="channel-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="view-detections" class="view-panel" aria-label="Detections">
+        <div id="det-notices" class="anomaly-notices"></div>
+        <div class="severity-grid" id="det-severity-grid" role="group" aria-label="Detections by severity"></div>
+        <section class="surface explorer-surface">
+          <div class="anomaly-tabs" role="tablist" aria-label="Detection scope">
+            <button class="anomaly-tab active" role="tab" aria-selected="true" data-det-scope="active">Active</button>
+            <button class="anomaly-tab" role="tab" aria-selected="false" data-det-scope="suppressed">Suppressed</button>
+            <button class="anomaly-tab" role="tab" aria-selected="false" data-det-scope="inactive">History (rule off / changed)</button>
+            <button class="anomaly-tab" role="tab" aria-selected="false" data-det-scope="all">All stored</button>
+            <span class="anomaly-refresh-note" id="det-refresh-note"></span>
+          </div>
+          <div class="time-filter" id="det-time" data-default="7d"></div>
+          <div class="explorer-toolbar det-toolbar">
+            <label class="search-field"><span class="search-icon" aria-hidden="true">&#8981;</span><input id="det-search" type="search" placeholder="Search detection, user, process…" autocomplete="off"></label>
+            <select id="det-severity" class="filter-select" aria-label="Severity"><option value="">All severities</option><option>Critical</option><option>High</option><option value="Critical,High">Critical or High</option><option>Medium</option><option>Low</option><option>Informational</option><option value="Low,Informational">Low or Informational</option></select>
+            <select id="det-category" class="filter-select" aria-label="Category"><option value="">All categories</option></select>
+            <input id="det-rule" class="filter-input" placeholder="Rule name" aria-label="Rule name">
+            <input id="det-event-id" class="filter-input id-filter" inputmode="numeric" placeholder="Event ID" aria-label="Event ID">
+            <select id="det-status" class="filter-select" aria-label="Status"><option value="">All statuses</option><option>New</option><option>Investigating</option><option>Resolved</option></select>
+            <select id="det-verdict" class="filter-select" aria-label="Verdict"><option value="">Any verdict</option><option value="none">No verdict yet</option><option value="true_positive">True positive</option><option value="false_positive">False positive</option><option value="benign">Benign / expected</option><option value="needs_investigation">Needs investigation</option></select>
+            <select id="det-rule-state" class="filter-select" aria-label="Rule state"><option value="">Rule on or off</option><option value="enabled">Rule enabled</option><option value="disabled">Rule disabled</option></select>
+            <select id="det-source" class="filter-select" aria-label="Detector"><option value="">All detectors</option><option value="rule">Rule matcher</option><option value="chain">Chain correlator</option><option value="behavior">Behaviour model</option></select>
+            <select id="det-sort" class="filter-select" aria-label="Sort"><option value="time_desc">Newest first</option><option value="time_asc">Oldest first</option><option value="score_desc">Highest risk</option><option value="severity">Severity</option></select>
+            <span id="det-rule-chip" class="filter-chip" hidden></span>
+            <button class="pager-button text-button" id="det-reset" type="button">Clear filters</button>
+          </div>
+          <div class="table-meta"><span id="det-count">Loading detections</span><span>FILTERS CHANGE THE VIEW, NOT WHAT IS DETECTED</span></div>
+          <div class="table-scroll"><table class="data-table det-table"><thead><tr><th>TIME</th><th>SEVERITY</th><th>RISK</th><th>DETECTION</th><th>EVENT IDS</th><th>RULE</th><th>CATEGORY / ATT&amp;CK</th><th>USER · PROCESS</th><th>STATUS</th></tr></thead><tbody id="det-body"></tbody></table></div>
+          <div class="table-footer"><span id="det-page-label">Page 1</span><div><button class="pager-button" id="det-prev" aria-label="Previous page">&#8592;</button><button class="pager-button" id="det-next" aria-label="Next page">&#8594;</button></div></div>
+        </section>
+      </section>
+
+      <section id="view-rules" class="view-panel" aria-label="Detection rules">
+        <section class="surface explorer-surface">
+          <div class="anomaly-tabs" role="tablist" aria-label="Rule views">
+            <button class="anomaly-tab active" role="tab" aria-selected="true" data-rules-tab="rules">Detection rules</button>
+            <button class="anomaly-tab" role="tab" aria-selected="false" data-rules-tab="model">Behaviour model</button>
+            <button class="anomaly-tab" role="tab" aria-selected="false" data-rules-tab="suppressions">Suppressions</button>
+            <button class="anomaly-tab" role="tab" aria-selected="false" data-rules-tab="coverage">Coverage &amp; collection</button>
+          </div>
+          <div id="rules-tab-rules">
+            <div class="explorer-toolbar rules-toolbar">
+              <label class="search-field"><span class="search-icon" aria-hidden="true">&#8981;</span><input id="rule-search" type="search" placeholder="Search name, rule ID, category or Event ID…" autocomplete="off"></label>
+              <select id="rule-origin" class="filter-select" aria-label="Origin"><option value="">All origins</option><option value="elastic">Elastic (imported)</option><option value="wazuh">Wazuh (imported)</option><option value="catalog">Griffendo catalog (v2-v4)</option><option value="griffendo">Griffendo correlation</option><option value="custom">Custom (user-defined)</option></select>
+              <select id="rule-kind" class="filter-select" aria-label="Kind"><option value="">All kinds</option><option value="single">Single event</option><option value="sequence">Sequence</option><option value="threshold">Threshold</option><option value="new_terms">First seen</option><option value="wazuh">Wazuh tree</option><option value="chain">Chain</option><option value="behavior">Behaviour</option></select>
+              <select id="rule-state" class="filter-select" aria-label="State"><option value="">On and off</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select>
+              <select id="rule-support" class="filter-select" aria-label="Support"><option value="">Any support level</option><option value="fully_supported">Fully supported</option><option value="requires_optional_source">Requires optional source</option><option value="partially_supported">Partially supported</option><option value="custom">Custom</option></select>
+              <select id="rule-sort" class="filter-select" aria-label="Sort"><option value="signals">Most triggered</option><option value="recent">Most recent</option><option value="severity">Severity</option><option value="name">Name</option></select>
+              <button class="quick-button add-rule-button" id="add-rule" type="button">+ Add rule</button>
+            </div>
+            <div class="table-meta"><span id="rule-count">Loading rules</span><span>SWITCHING A RULE OFF HIDES ITS DETECTIONS; NOTHING IS DELETED</span></div>
+            <div class="table-scroll"><table class="data-table rules-table"><thead><tr><th>ON/OFF</th><th>RULE</th><th>KIND</th><th>SEVERITY</th><th>SOURCES</th><th>SUPPORT</th><th>SIGNALS</th><th>7 DAYS</th><th>LAST</th><th></th></tr></thead><tbody id="rules-body"></tbody></table></div>
+            <div class="table-footer"><span id="rule-page-label"></span><div><button class="pager-button" id="rule-prev" aria-label="Previous page">&#8592;</button><button class="pager-button" id="rule-next" aria-label="Next page">&#8594;</button></div></div>
+          </div>
+          <div id="rules-tab-model" hidden></div>
+          <div id="rules-tab-suppressions" hidden></div>
+          <div id="rules-tab-coverage" hidden></div>
+        </section>
+      </section>
+
+      <section id="view-events" class="view-panel" aria-label="Event explorer">
+        <section class="surface explorer-surface">
+          <div class="explorer-toolbar">
+            <label class="search-field"><span class="search-icon" aria-hidden="true">&#8981;</span><input id="event-search" type="search" placeholder="Search provider, user, command line…" autocomplete="off"></label>
+            <input id="host-filter" class="filter-input" placeholder="Host" aria-label="Filter by host">
+            <select id="channel-filter" class="filter-select" aria-label="Filter by channel"><option value="">All channels</option><option>Security</option><option>System</option><option>Setup</option><option>Application</option></select>
+            <input id="event-id-filter" class="filter-input id-filter" inputmode="numeric" placeholder="Event ID" aria-label="Filter by event ID">
+          </div>
+          <div class="time-filter" id="event-time" data-default=""></div>
+          <div class="table-meta"><span id="event-result-count">Loading events</span><span>SELECT A ROW FOR RAW XML</span></div>
+          <div class="table-scroll"><table class="data-table"><thead><tr><th>TIME</th><th>EVENT</th><th>CHANNEL</th><th>HOST</th><th>USER</th><th>PROCESS</th><th>PARENT PROCESS</th><th>LEVEL</th></tr></thead><tbody id="events-body"></tbody></table></div>
+          <div class="table-footer"><span id="event-page-label">Page 1</span><div><button class="pager-button" id="previous-page" aria-label="Previous page">&#8592;</button><button class="pager-button" id="next-page" aria-label="Next page">&#8594;</button></div></div>
+        </section>
+      </section>
+
+      <section id="view-processes" class="view-panel" aria-label="Process explorer">
+        <div class="process-layout"><section class="surface process-table-surface"><div class="section-heading"><div><span class="section-kicker">EXECUTION INVENTORY</span><h2>Observed processes</h2></div><span class="chart-unit">GROUPED BY HOST + PID</span></div><div class="table-scroll"><table class="data-table"><thead><tr><th>PROCESS (CHILD)</th><th>PID</th><th>PARENT PROCESS</th><th>PARENT PID</th><th>HOST</th><th>EVENTS</th><th>FIRST SEEN</th></tr></thead><tbody id="processes-body"></tbody></table></div></section><aside class="surface process-note"><span class="section-kicker">RELATIONSHIPS</span><h2>Parent to child</h2><p>Links are inferred from normalized process-creation fields. PID reuse and missing audit fields can make ancestry incomplete.</p><div id="process-tree" class="process-tree"></div></aside></div>
+      </section>
+
+      <section id="view-timeline" class="view-panel" aria-label="Detection timeline">
+        <section class="surface timeline-surface"><div class="section-heading"><div><span class="section-kicker">CHRONOLOGY · DETECTIONS · LAST 7 DAYS</span><h2>Detection timeline</h2></div><span class="chart-unit" id="timeline-updated">NOT LOADED YET</span></div>
+          <p class="rules-note timeline-intro">Active detections, oldest first. Each entry groups the signals of one user, logon session or process within a 30-minute slice; open it to see the contributing events in order. All collected events remain in the <button type="button" class="inline-link" data-go="events">Event explorer</button>.</p>
+          <div class="explorer-toolbar timeline-toolbar">
+            <label class="search-field"><span class="search-icon" aria-hidden="true">&#8981;</span><input id="tl-search" type="search" placeholder="Search detection, user, process…" autocomplete="off"></label>
+            <select id="tl-range" class="filter-select" aria-label="Time range"><option value="7d">Last 7 days</option><option value="24h">Last 24 hours</option><option value="6h">Last 6 hours</option><option value="1h">Last hour</option></select>
+            <select id="tl-severity" class="filter-select" aria-label="Filter by severity"><option value="">All severities</option><option value="Critical">Critical</option><option value="High">High</option><option value="Critical,High">Critical or High</option><option value="Medium">Medium</option><option value="Low">Low</option><option value="Informational">Informational</option></select>
+            <input id="tl-event-id" class="filter-input id-filter" inputmode="numeric" placeholder="Event ID" aria-label="Filter by event ID">
+          </div>
+          <div class="table-meta tl-meta"><span id="tl-count">Loading timeline</span><span class="tl-jumps"><button type="button" class="pager-button text-button" id="tl-oldest">&#8676; Oldest</button><button type="button" class="pager-button text-button" id="tl-newest">Newest &#8677;</button></span></div>
+          <div class="tl-edge"><button type="button" class="quick-button" id="tl-earlier" hidden>Load earlier detections</button></div>
+          <div id="timeline-list" class="timeline-list" aria-live="polite"></div>
+          <div class="tl-footer"><button type="button" class="quick-button" id="tl-more" hidden>Load newer detections</button><span id="tl-end" class="rules-note"></span></div>
+        </section>
+      </section>
+
+      <section id="view-endpoints" class="view-panel" aria-label="Endpoint">
+        <div id="endpoint-root" class="endpoint-root"></div>
+        <section class="surface endpoints-surface"><div class="section-heading"><div><span class="section-kicker">ACTIVITY</span><h2>What this host is doing</h2></div><span class="chart-unit">LATEST 200 EVENTS</span></div><div id="endpoints-list" class="endpoints-list" hidden></div><div id="host-overview" class="host-overview" hidden></div></section>
+      </section>
+
+      <footer class="page-footer"><span>GRIFFENDO <span class="footer-sep">/</span> WINDOWS EVENT PLATFORM</span><span>RAW EVENTS RETAINED · NORMALIZATION ON SERVER</span></footer>
+    </main>
+  </div>
+
+  <dialog id="event-dialog" class="event-dialog"><div class="dialog-head"><div><span class="section-kicker">EVENT RECORD</span><h2 id="dialog-title">Event details</h2></div><button class="close-button" id="close-dialog" aria-label="Close details">&#10005;</button></div><div id="dialog-body" class="dialog-body"></div></dialog>
+  <dialog id="det-dialog" class="event-dialog det-dialog"><div class="dialog-head"><div><span class="section-kicker" id="det-dialog-kicker">DETECTION</span><h2 id="det-dialog-title">Detection</h2></div><button class="close-button" id="close-det-dialog" aria-label="Close">&#10005;</button></div><div id="det-dialog-body" class="dialog-body"></div></dialog>
+  <dialog id="rule-detail-dialog" class="event-dialog det-dialog"><div class="dialog-head"><div><span class="section-kicker">DETECTION RULE</span><h2 id="rule-detail-title">Rule</h2></div><button class="close-button" id="close-rule-detail" aria-label="Close">&#10005;</button></div><div id="rule-detail-body" class="dialog-body"></div></dialog>
+  <dialog id="rule-dialog" class="event-dialog rule-dialog det-dialog"><form id="rule-form" novalidate>
+    <div class="dialog-head"><div><span class="section-kicker" id="rule-dialog-kicker">CUSTOM RULE</span><h2 id="rule-dialog-title">Add rule</h2></div><button class="close-button" type="button" id="close-rule-dialog" aria-label="Close">&#10005;</button></div>
+    <div class="dialog-body">
+      <div class="explain-box"><p>Build a rule from conditions on Griffendo's normalized event fields. Rules are validated data, never code: nothing is executed, and the recommended action is guidance for analysts only. Fields Griffendo does not collect are refused with an explanation.</p></div>
+      <div class="form-error" id="rule-form-error" hidden></div>
+      <div class="form-grid">
+        <label class="span-2"><span>RULE NAME *</span><input name="name" class="filter-input" maxlength="200" required></label>
+        <label><span>SEVERITY *</span><select name="severity" class="filter-select" required><option value="">Choose…</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option><option>Informational</option></select></label>
+        <label><span>CATEGORY *</span><input name="category" class="filter-input" maxlength="100" required list="category-options" placeholder="Persistence"></label>
+        <label><span>RULE TYPE *</span><select name="kind" class="filter-select" id="rule-kind-select"><option value="single">Single event</option><option value="threshold">Count within a time window</option><option value="sequence">Sequence of events</option></select></label>
+        <label><span>INITIAL STATE</span><select name="enabled" class="filter-select"><option value="true">Enabled</option><option value="false">Disabled</option></select></label>
+        <div class="span-2 builder-block"><span class="builder-label">EVENT SOURCES * <small>channel and Event IDs the rule reads</small></span><div id="rule-sources"></div><button type="button" class="pager-button text-button" id="add-source">+ Add source</button></div>
+        <div class="span-2 builder-block" id="rule-condition-block"><span class="builder-label">CONDITIONS *</span><div id="rule-condition"></div></div>
+        <div class="span-2 builder-block" id="rule-threshold-block" hidden><span class="builder-label">COUNT</span>
+          <div class="inline-fields"><label>At least <input name="threshold_count" class="filter-input tiny-input" inputmode="numeric" value="5"> matching events</label><label>within <input name="threshold_window" class="filter-input tiny-input" inputmode="numeric" value="300"> seconds</label><label>with the same <select name="threshold_by" class="filter-select"><option value="">(any)</option><option value="user.name">user</option><option value="source.ip">source address</option><option value="process.name">process</option><option value="winlog.logon.id">logon session</option></select></label></div></div>
+        <div class="span-2 builder-block" id="rule-sequence-block" hidden><span class="builder-label">SEQUENCE STEPS <small>in this order, within the time span</small></span><div id="rule-steps"></div>
+          <div class="inline-fields"><button type="button" class="pager-button text-button" id="add-step">+ Add step</button><label>Time span <input name="maxspan" class="filter-input tiny-input" inputmode="numeric" value="300"> seconds</label><label>Steps share the same <select name="sequence_by" class="filter-select"><option value="">(nothing)</option><option value="user.name">user</option><option value="winlog.logon.id">logon session</option><option value="process.entity_id">process (Sysmon GUID)</option><option value="source.ip">source address</option></select></label></div></div>
+        <label class="span-2"><span>DESCRIPTION *</span><textarea name="description" class="filter-input" rows="2" maxlength="4000" required></textarea></label>
+        <label class="span-2"><span>DETECTION EXPLANATION * <small>why a match matters</small></span><textarea name="explanation" class="filter-input" rows="2" maxlength="4000" required></textarea></label>
+        <label class="span-2"><span>RECOMMENDED INVESTIGATION *</span><textarea name="investigation" class="filter-input" rows="2" maxlength="4000" required></textarea></label>
+        <label><span>MITRE ATT&amp;CK (E.G. T1543.003)</span><input name="mitre" class="filter-input" maxlength="200"></label>
+        <label><span>RULE ID</span><input name="rule_id" class="filter-input" maxlength="64" placeholder="Generated if empty"></label>
+      </div>
+      <div class="dialog-actions"><button type="button" class="pager-button text-button" id="validate-rule">Check rule</button><span class="rules-note" id="rule-validate-note"></span><button type="button" class="pager-button text-button" id="cancel-rule">Cancel</button><button type="submit" class="quick-button primary-button" id="save-rule">Save rule</button></div>
+    </div>
+  </form></dialog>
+  <datalist id="channel-options"></datalist><datalist id="category-options"></datalist><datalist id="field-options"></datalist>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

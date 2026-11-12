@@ -1,0 +1,97 @@
+{
+  "label": "v4 disk 200k batch 5000",
+  "src": "src",
+  "events": 200000,
+  "batch": 5000,
+  "ingest_seconds": 39.45,
+  "ingest_events_per_sec": 5070,
+  "first_batch_seconds": 0.544,
+  "payload_mb": 209.2,
+  "rss_mb_start": 49.4,
+  "rss_mb_after_ingest": 153.2,
+  "api": {
+    "overview": {
+      "first_ms": 380.4,
+      "median_ms": 3.0,
+      "bytes": 7115
+    },
+    "events_page1": {
+      "first_ms": 7.7,
+      "median_ms": 7.0,
+      "bytes": 42069
+    },
+    "events_filtered": {
+      "first_ms": 36.5,
+      "median_ms": 36.5,
+      "bytes": 41737
+    },
+    "timeline_legacy_100": {
+      "first_ms": 4.0,
+      "median_ms": 3.6,
+      "bytes": 31501
+    },
+    "anomaly_summary": {
+      "first_ms": 247.2,
+      "median_ms": 6.9,
+      "bytes": 14241
+    },
+    "anomalies_page": {
+      "first_ms": 17.5,
+      "median_ms": 16.1,
+      "bytes": 55417
+    },
+    "timeline_page_200": {
+      "first_ms": 30.0,
+      "median_ms": 24.8,
+      "bytes": 93395
+    },
+    "timeline_page_filtered": {
+      "first_ms": 42.3,
+      "median_ms": 37.8,
+      "bytes": 102152
+    },
+    "rules": {
+      "first_ms": 4.7,
+      "median_ms": 3.9,
+      "bytes": 176542
+    },
+    "live": {
+      "first_ms": 2.3,
+      "median_ms": 2.2,
+      "bytes": 346
+    },
+    "overview_with_24h_graph": {
+      "first_ms": 97.4,
+      "median_ms": 2.1,
+      "bytes": 7102
+    },
+    "anomaly_timeline_first_200": {
+      "first_ms": 26.5,
+      "median_ms": 7.0,
+      "bytes": 201715
+    },
+    "anomaly_timeline_newest_200": {
+      "first_ms": 6.6,
+      "median_ms": 6.6,
+      "bytes": 202298
+    },
+    "anomaly_timeline_critical": {
+      "first_ms": 13.3,
+      "median_ms": 8.7,
+      "bytes": 203825
+    }
+  },
+  "timeline_full_walk": {
+    "pages": 374,
+    "events": 186645,
+    "seconds": 16.31,
+    "window_total_reported": 186645
+  },
+  "anomaly_timeline_full_walk": {
+    "pages": 34,
+    "events": 16861,
+    "seconds": 0.62,
+    "total_reported": 16861
+  },
+  "rss_mb_end": 153.4
+}

@@ -1,0 +1,1 @@
+"""Windows log analytics platform."""

@@ -1,0 +1,40 @@
+{
+  "queries": {
+    "summary_cold_ms": 422.0,
+    "summary_warm_ms": 3.0,
+    "anomaly_list_page_50_ms": 13.7,
+    "anomaly_list_high_ms": 7.6,
+    "grouped_cold_ms": 124.8,
+    "rules_with_status_cold_ms": 300.3,
+    "timeline_first_page_cold_ms": 74.5,
+    "timeline_first_page_warm_ms": 15.4,
+    "timeline_next_page_ms": 15.4,
+    "timeline_newest_page_ms": 7.7,
+    "timeline_live_changes_ms": 2.4,
+    "activity_24h_ms": 0.5
+  },
+  "events": 200000,
+  "detections": 65107,
+  "timeline_full_walk": {
+    "entries": 14392,
+    "unique": 14392,
+    "total_reported": 14392,
+    "pages": 29,
+    "seconds": 0.75
+  },
+  "enable_rule_evaluation": {
+    "rule": "SEC-4624",
+    "first_enable": {
+      "seconds": 6.18,
+      "candidates": 48234,
+      "inserted": 48234,
+      "state": "done"
+    },
+    "re_enable": {
+      "seconds": 0.69,
+      "restored": 48234,
+      "inserted": 0,
+      "state": "done"
+    }
+  }
+}

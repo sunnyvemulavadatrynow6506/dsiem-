@@ -1,0 +1,25 @@
+{
+  "queries": {
+    "summary_cold_ms": 989.7,
+    "summary_warm_ms": 3.0,
+    "anomaly_list_page_50_ms": 40.0,
+    "anomaly_list_high_ms": 10.0,
+    "grouped_cold_ms": 530.2,
+    "rules_with_status_cold_ms": 551.1,
+    "timeline_first_page_cold_ms": 371.5,
+    "timeline_first_page_warm_ms": 4.9,
+    "timeline_next_page_ms": 4.8,
+    "timeline_newest_page_ms": 4.1,
+    "timeline_live_changes_ms": 12.1,
+    "activity_24h_ms": 0.5
+  },
+  "events": 1000000,
+  "detections": 84500,
+  "timeline_full_walk": {
+    "entries": 72193,
+    "unique": 72193,
+    "total_reported": 72193,
+    "pages": 145,
+    "seconds": 2.08
+  }
+}

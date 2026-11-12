@@ -1,0 +1,22 @@
+{
+  "events": 1000000,
+  "detections": 84500,
+  "api": {
+    "anomaly_summary": {
+      "cold_median_ms": 4415.5,
+      "warm_median_ms": 823.8
+    },
+    "overview": {
+      "cold_median_ms": 1404.4,
+      "warm_median_ms": 0.0
+    },
+    "rules": {
+      "cold_median_ms": 3556.2,
+      "warm_median_ms": 1.6
+    },
+    "coverage": {
+      "cold_median_ms": 3266.6,
+      "warm_median_ms": 1.7
+    }
+  }
+}

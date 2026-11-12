@@ -1,0 +1,95 @@
+{
+  "version": "v5",
+  "events": 1000000,
+  "ingest_seconds": 1607.3,
+  "ingest_events_per_sec": 622,
+  "rss_mb_after_ingest": 277.6,
+  "detection_backlog_after_ingest_seconds": 754.1,
+  "detection_total_seconds": 2383.4,
+  "detection_events_per_sec_end_to_end": 420,
+  "engine": {
+    "processed": 1000000,
+    "signals": 540990,
+    "events_per_second": 891.7,
+    "errors": 0,
+    "state": {
+      "window_entries": 2846,
+      "window_keys": 664,
+      "evicted_keys": 0,
+      "processes": 38658,
+      "logon_sessions": 98,
+      "max_window_seconds": 7200.0
+    }
+  },
+  "detections": {
+    "Critical": 335,
+    "High": 9100,
+    "Medium": 9258,
+    "Low": 35383,
+    "Informational": 101625
+  },
+  "rss_mb_after_processing": 377.5,
+  "pages": {
+    "overview": {
+      "cold_ms": 2368.3,
+      "warm_ms": 148.1,
+      "bytes": 30419,
+      "calls": [
+        "/api/overview",
+        "/api/detections/summary"
+      ]
+    },
+    "endpoint": {
+      "cold_ms": 900.1,
+      "warm_ms": 312.7,
+      "bytes": 238853,
+      "calls": [
+        "/api/endpoint",
+        "/api/hosts",
+        "/api/events"
+      ]
+    },
+    "timeline": {
+      "cold_ms": 24.1,
+      "warm_ms": 19.7,
+      "bytes": 309105,
+      "calls": [
+        "/api/timeline/detections"
+      ]
+    },
+    "detections": {
+      "cold_ms": 754.0,
+      "warm_ms": 165.2,
+      "bytes": 88743,
+      "calls": [
+        "/api/detections",
+        "/api/detections/summary"
+      ]
+    },
+    "rules": {
+      "cold_ms": 2125.0,
+      "warm_ms": 153.1,
+      "bytes": 50074,
+      "calls": [
+        "/api/detections/rules"
+      ]
+    },
+    "events": {
+      "cold_ms": 6.9,
+      "warm_ms": 6.0,
+      "bytes": 98326,
+      "calls": [
+        "/api/events"
+      ]
+    },
+    "events_last_hour": {
+      "cold_ms": 8.1,
+      "warm_ms": 6.3,
+      "bytes": 98376,
+      "calls": [
+        "/api/events"
+      ]
+    }
+  },
+  "rss_mb_end": 387.6
+}

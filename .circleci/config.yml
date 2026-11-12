@@ -35,36 +35,36 @@ jobs:
       - checkout
       - restore_cache:
           keys:
-            - node-mod-v1-{{ checksum "web/ui/package.json" }}
+            - node-mod-v1-{{ checksum "dsiem/web/ui/package.json" }}
       - run:
           name: install deps
           command: |
-            cd web/ui
+            cd dsiem/web/ui
             rm -rf node_modules
             npx npm-force-resolutions
             npm install
       - save_cache:
-          key: node-mod-v1-{{ checksum "web/ui/package.json" }}
+          key: node-mod-v1-{{ checksum "dsiem/web/ui/package.json" }}
           paths:
-            - "web/ui/node_modules"
+            - "dsiem/web/ui/node_modules"
       # this will be enabled once the web UI code is ready for it
       - run:
           name: Linting
-          command: cd web/ui && npm run lint
+          command: cd dsiem/web/ui && npm run lint
       # - run:
       #    name: Testing
-      #    command: cd web/ui && npm run test && bash <(curl -s https://codecov.io/bash)
+      #    command: cd dsiem/web/ui && npm run test && bash <(curl -s https://codecov.io/bash)
       - run:
           name: build dist
           command: |
-            cd web/ui
+            cd dsiem/web/ui
             npm run ng -- build --prod --build-optimizer --base-href /ui/
             rm -rf ../dist
             cp -r ./dist ../
       - persist_to_workspace:
           root: .
           paths:
-            - web/dist/*
+            - dsiem/web/dist/*
   semantic-check:
     docker:
       - image: circleci/node:lts-browsers
@@ -162,7 +162,7 @@ jobs:
                 sleep 60
               done
               echo "building docker for release $ver .."
-              cd deployments/docker/build
+              cd dsiem/deployments/docker/build
               docker build -f Dockerfile -t defenxor/dsiem:$ver -t defenxor/dsiem:latest . --build-arg tag=$tag
               echo "$DOCKER_PASSWD" | docker login -u $DOCKER_USER --password-stdin
               docker push defenxor/dsiem:$ver

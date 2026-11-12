@@ -1,0 +1,41 @@
+{
+ "wazuh": {
+  "counts": {
+   "fired": 806,
+   "no witness": 2,
+   "taken by an earlier sibling": 15
+  },
+  "missed": [],
+  "taken_by_sibling": [
+   "WAZ-60200->WAZ-60119",
+   "WAZ-60203->WAZ-60107",
+   "WAZ-60205->WAZ-60104",
+   "WAZ-60634->WAZ-60612",
+   "WAZ-60701->WAZ-60700",
+   "WAZ-60702->WAZ-60676",
+   "WAZ-60737->WAZ-60729",
+   "WAZ-60742->WAZ-60731",
+   "WAZ-60745->WAZ-60732",
+   "WAZ-60845->WAZ-60843",
+   "WAZ-60864->WAZ-60862",
+   "WAZ-62105->WAZ-62104",
+   "WAZ-62106->WAZ-62103",
+   "WAZ-62192->WAZ-62163",
+   "WAZ-62210->WAZ-62206"
+  ],
+  "no_witness": [
+   "WAZ-60134",
+   "WAZ-60135"
+  ]
+ },
+ "deterministic": {
+  "counts": {
+   "fired": 516,
+   "no witness": 1
+  },
+  "missed": [],
+  "no_witness": [
+   "ELA-642CE354-71C1"
+  ]
+ }
+}

@@ -1,0 +1,22 @@
+{
+  "events_in_log": 100000,
+  "events_stored": 100000,
+  "backfill_seconds": 14.94,
+  "pipeline_events_per_second": 6693,
+  "time_to_first_visible_events_seconds": 0.54,
+  "live_latency_seconds": {
+    "min": 1.52,
+    "median": 1.58,
+    "p95": 1.63,
+    "max": 2.07,
+    "samples": 20,
+    "poll_interval_seconds": 2.0
+  },
+  "settings": {
+    "backfill_batch": 2000,
+    "delivery_batch": 5000
+  },
+  "v2_powershell_processes_for_same_backlog": 463,
+  "v3_powershell_processes_with_native_reader": 0,
+  "note": "Windows read cost excluded (in-memory fake log); see docstring."
+}

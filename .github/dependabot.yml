@@ -6,7 +6,7 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
-    directory: "/web/ui"
+    directory: "/dsiem/web/ui"
     schedule:
       interval: "daily"
       day: "sunday"
@@ -16,7 +16,7 @@ updates:
       prefix: "build"
 
   - package-ecosystem: "gomod"
-    directory: "/"
+    directory: "/dsiem"
     schedule:
       interval: "daily"
       day: "sunday"
